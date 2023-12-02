@@ -34,6 +34,7 @@ def main():
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
     parser.add_argument('--use_honest', action='store_true', help='use local editted version of the model', default=False)
     parser.add_argument('--collect', type=str, default='stimulus')
+    parser.add_argument('--cut_type', type=str, default='')
     parser.add_argument('--stimulus_pos', type=int, default='6')
     parser.add_argument('--cur_rate', type=float, default='1')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
@@ -78,9 +79,9 @@ def main():
     num_heads = model.config.num_attention_heads
     
     # load activations 
-    head_wise_activations = pkl.load(open(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_head_wise.pkl", 'rb'))
-    labels = np.load(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_labels.npy")
-    tokens = pkl.load(open(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_tokens.pkl", 'rb'))
+    head_wise_activations = pkl.load(open(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise.pkl", 'rb'))
+    labels = np.load(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy")
+    tokens = pkl.load(open(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_tokens.pkl", 'rb'))
     
     def find_ans_positions(tokens):
         positions = []
@@ -97,9 +98,8 @@ def main():
     if args.collect == 'all':
         ans_start_pos, ans_len = find_ans_positions(tokens)
         head_wise_activations = [activations[:, pos + int(l * args.cur_rate) - 1,:] for activations, pos, l in zip(head_wise_activations, ans_start_pos, ans_len)]
-    else:
+    elif args.collect == 'stimulus':
         head_wise_activations = [activations[:, args.stimulus_pos, :] for activations in head_wise_activations]
-        
     
     
     head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
@@ -132,11 +132,14 @@ def main():
     all_head_accs_np = np.array(all_head_accs)
     all_head_accs_np = all_head_accs_np.reshape(num_layers, num_heads)
     if args.collect == 'all':
-        pkl.dump(probes, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(int(args.cur_rate * 100)).zfill(3)}_probes.pkl', 'wb'))
-        pkl.dump(all_head_accs_np, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(int(args.cur_rate * 100)).zfill(3)}_head_accs.pkl', 'wb'))
+        pkl.dump(probes, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(int(args.cur_rate * 100)).zfill(3)}_probes.pkl', 'wb'))
+        pkl.dump(all_head_accs_np, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(int(args.cur_rate * 100)).zfill(3)}_head_accs.pkl', 'wb'))
     elif args.collect == 'stimulus':
-        pkl.dump(probes, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(args.stimulus_pos)}_probes.pkl', 'wb'))
-        pkl.dump(all_head_accs_np, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(args.stimulus_pos)}_head_accs.pkl', 'wb'))
+        pkl.dump(probes, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(args.stimulus_pos)}_probes.pkl', 'wb'))
+        pkl.dump(all_head_accs_np, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(args.stimulus_pos)}_head_accs.pkl', 'wb'))
+    else:
+        pkl.dump(probes, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_probes.pkl', 'wb'))
+        pkl.dump(all_head_accs_np, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_accs.pkl', 'wb'))
     
     
 if __name__ == "__main__":
