@@ -78,9 +78,9 @@ def main():
     num_heads = model.config.num_attention_heads
     
     # load activations 
-    head_wise_activations = pkl.load(open(f"/data1/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_head_wise.pkl", 'rb'))
-    labels = np.load(f"/data1/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_labels.npy")
-    tokens = pkl.load(open(f"/data1/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_tokens.pkl", 'rb'))
+    head_wise_activations = pkl.load(open(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_head_wise.pkl", 'rb'))
+    labels = np.load(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_labels.npy")
+    tokens = pkl.load(open(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_tokens.pkl", 'rb'))
     
     def find_ans_positions(tokens):
         positions = []
@@ -132,11 +132,11 @@ def main():
     all_head_accs_np = np.array(all_head_accs)
     all_head_accs_np = all_head_accs_np.reshape(num_layers, num_heads)
     if args.collect == 'all':
-        pkl.dump(probes, open(f'/data1/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(int(args.cur_rate * 100)).zfill(3)}_probes.pkl', 'wb'))
-        pkl.dump(all_head_accs_np, open(f'/data1/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(int(args.cur_rate * 100)).zfill(3)}_head_accs.pkl', 'wb'))
+        pkl.dump(probes, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(int(args.cur_rate * 100)).zfill(3)}_probes.pkl', 'wb'))
+        pkl.dump(all_head_accs_np, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(int(args.cur_rate * 100)).zfill(3)}_head_accs.pkl', 'wb'))
     elif args.collect == 'stimulus':
-        pkl.dump(probes, open(f'/data1/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(args.stimulus_pos)}_probes.pkl', 'wb'))
-        pkl.dump(all_head_accs_np, open(f'/data1/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(args.stimulus_pos)}_head_accs.pkl', 'wb'))
+        pkl.dump(probes, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(args.stimulus_pos)}_probes.pkl', 'wb'))
+        pkl.dump(all_head_accs_np, open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}_{str(args.stimulus_pos)}_head_accs.pkl', 'wb'))
     
     
 if __name__ == "__main__":

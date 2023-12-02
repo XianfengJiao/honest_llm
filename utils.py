@@ -35,8 +35,6 @@ ENGINE_MAP = {
 }
 
 
-
-
 from truthfulqa.utilities import (
     format_prompt,
     format_prompt_with_answer_strings,
@@ -48,6 +46,12 @@ from truthfulqa.presets import preset_map, COMPARE_PRIMER
 from truthfulqa.models import find_subsequence, set_columns, MC_calcs
 from truthfulqa.evaluate import format_frame, data_to_dict
 
+
+def get_ans_pos(token):
+    for i in range(1, len(token)):
+        if token[i] == ':' and token[i-1] == '▁A':
+            return i + 1
+    return -1
 
 def load_nq():
     dataset = load_dataset("OamPatel/iti_nq_open_val")["validation"]

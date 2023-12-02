@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='llama_7B')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2')
-    parser.add_argument('--collect', type=str, default='cut')
+    parser.add_argument('--collect', type=str, default='stimulus_mean')
     parser.add_argument('--cut_type', type=str, default='')
     parser.add_argument('--device', type=int, default=1)
     args = parser.parse_args()
@@ -45,15 +45,17 @@ def main():
 
     if args.dataset_name == "tqa_mc2": 
         dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
-        if args.collect == 'all':
+        if 'all' in args.collect:
             formatter = tokenized_tqa_all
-        elif args.collect == 'stimulus':
+        elif 'stimulus' in args.collect:
             formatter = tokenized_tqa_stimulus
         elif args.collect == 'cut':
             if args.cut_type == 'random':
                 pos_fn = lambda x: random.randint(1,len(x))
             elif args.cut_type == '05':
-                pos_fn = lambda x: random.randint(1,len(x)//2)
+                pos_fn = lambda x: len(x)//2
+            else:
+                pos_fn = lambda x: len(x)
             formatter = partial(tokenized_tqa_cut, pos=pos_fn)
     elif args.dataset_name == "tqa_gen": 
         dataset = load_dataset("truthful_qa", 'generation')['validation']
@@ -67,7 +69,7 @@ def main():
     print("Tokenizing prompts")
     if args.dataset_name == "tqa_gen" or args.dataset_name == "tqa_gen_end_q": 
         prompts, labels, categories = formatter(dataset, tokenizer)
-        with open(f'/data1/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_categories.pkl', 'wb') as f:
+        with open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_categories.pkl', 'wb') as f:
             pickle.dump(categories, f)
     else: 
         prompts, labels, tokens = formatter(dataset, tokenizer)
@@ -76,9 +78,16 @@ def main():
     all_head_wise_activations = []
 
     print("Getting activations")
-    for prompt in tqdm(prompts):
+    for prompt, token in tqdm(zip(prompts, tokens), total=len(prompts)):
         layer_wise_activations, head_wise_activations, _ = get_llama_activations_bau(model, prompt, device)
-        if args.collect == 'stimulus':
+        if 'ans' in args.collect:
+            pos = get_ans_pos(token)
+            layer_wise_activations = layer_wise_activations[:, pos:, :]
+            head_wise_activations = head_wise_activations[:, pos:, :]
+        if 'mean' in args.collect:
+            all_layer_wise_activations.append(np.mean(layer_wise_activations, axis=1))
+            all_head_wise_activations.append(np.mean(head_wise_activations, axis=1))
+        elif args.collect == 'stimulus':
             all_layer_wise_activations.append(layer_wise_activations[:,[5,6,7,-4,-3,-2,-1],:])
             all_head_wise_activations.append(head_wise_activations[:,[5,6,7,-4,-3,-2,-1],:])
         elif args.collect == 'cut':
@@ -89,18 +98,21 @@ def main():
             all_head_wise_activations.append(head_wise_activations)
 
     print("Saving labels")
-    np.save(f'/data1/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy', labels)
+    np.save(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy', labels)
     
     print("Saving tokens")
-    pickle.dump(tokens, open(f'/data1/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_tokens.pkl', 'wb'))
+    pickle.dump(tokens, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_tokens.pkl', 'wb'))
 
     print("Saving layer wise activations")
-    pickle.dump(all_layer_wise_activations, open(f'/data1/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_layer_wise.pkl', 'wb'))
+    pickle.dump(all_layer_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_layer_wise.pkl', 'wb'))
     # np.save(f'features/all_activations/{args.model_name}_{args.dataset_name}_layer_wise.npy', all_layer_wise_activations)
     
     print("Saving head wise activations")
-    pickle.dump(all_head_wise_activations, open(f'/data1/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise.pkl', 'wb'))
+    pickle.dump(all_head_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise.pkl', 'wb'))
     # np.save(f'features/all_activations/{args.model_name}_{args.dataset_name}_head_wise.npy', all_head_wise_activations)
+
+    print("All saved successfully")
+
 
 if __name__ == '__main__':
     main()
