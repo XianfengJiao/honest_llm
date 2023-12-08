@@ -24,8 +24,8 @@ HF_NAMES = {
     'honest_alpaca_7B': 'results_dump/alpaca_7B_seed_42_top_48_heads_alpha_15', 
     'vicuna_7B': 'AlekseyKorshuk/vicuna-7b', 
     'honest_vicuna_7B': 'results_dump/vicuna_7B_seed_42_top_48_heads_alpha_15', 
-    # 'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
-    'llama2_chat_7B': 'daryl149/llama-2-7b-chat-hf',
+    'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
+    # 'llama2_chat_7B': 'daryl149/llama-2-7b-chat-hf',
     'honest_llama2_chat_7B': 'results_dump/llama2_chat_7B_seed_42_top_48_heads_alpha_15', 
 }
 
@@ -102,10 +102,10 @@ def main():
         head_wise_activations = [activations[:, args.stimulus_pos, :] for activations in head_wise_activations]
     
     
-    head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
+    head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)  # batch_size, layer_nums, head_nums, hidden_dim
 
+    # 分割后维度为 (q_nums, q_a_nums, layer_nums, head_nums, hidden_dim), separated_head_wise_activations最后一维为null(bug)
     separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
-    
     all_head_accs = []
     probes = []
     

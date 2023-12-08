@@ -22,9 +22,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='llama_7B')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2')
-    parser.add_argument('--collect', type=str, default='stimulus_mean')
+    parser.add_argument('--collect', type=str, default='stimulus_ans_mean')
     parser.add_argument('--cut_type', type=str, default='')
-    parser.add_argument('--device', type=int, default=1)
+    parser.add_argument('--device', type=int, default=0)
     args = parser.parse_args()
     HF_NAMES = {
         # 'llama_7B': 'decapoda-research/llama-7b-hf',
@@ -45,11 +45,11 @@ def main():
 
     if args.dataset_name == "tqa_mc2": 
         dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
-        if 'all' in args.collect:
+        if 'all' in args.collect:   # 正常收集
             formatter = tokenized_tqa_all
-        elif 'stimulus' in args.collect:
+        elif 'stimulus' in args.collect:  # 加入stimulus模板
             formatter = tokenized_tqa_stimulus
-        elif args.collect == 'cut':
+        elif args.collect == 'cut':  # 截断
             if args.cut_type == 'random':
                 pos_fn = lambda x: random.randint(1,len(x))
             elif args.cut_type == '05':
@@ -72,13 +72,15 @@ def main():
         with open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_categories.pkl', 'wb') as f:
             pickle.dump(categories, f)
     else: 
-        prompts, labels, tokens = formatter(dataset, tokenizer)
+        prompts, labels, tokens = formatter(dataset, tokenizer)  # tokens是原本的句子
 
     all_layer_wise_activations = []
     all_head_wise_activations = []
 
     print("Getting activations")
     for prompt, token in tqdm(zip(prompts, tokens), total=len(prompts)):
+        # layer_wise_activations (33, 42, 4096) num_hidden_layers + last, seq_len, hidden_size
+        # head_wise_activations (32, 42, 4096) num_hidden_layers, seq_len, hidden_size
         layer_wise_activations, head_wise_activations, _ = get_llama_activations_bau(model, prompt, device)
         if 'ans' in args.collect:
             pos = get_ans_pos(token)

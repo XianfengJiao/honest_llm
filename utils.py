@@ -768,8 +768,8 @@ def get_top_heads(train_idxs, val_idxs, separated_activations, separated_labels,
 
     top_heads = []
 
-    top_accs = np.argsort(all_head_accs_np.reshape(num_heads*num_layers))[::-1][:num_to_intervene]
-    top_heads = [flattened_idx_to_layer_head(idx, num_heads) for idx in top_accs]
+    top_accs = np.argsort(all_head_accs_np.reshape(num_heads*num_layers))[::-1][:num_to_intervene] # 排序后反转取索引
+    top_heads = [flattened_idx_to_layer_head(idx, num_heads) for idx in top_accs]  # 准确率最高的层和head的索引
     if use_random_dir: 
         # overwrite top heads with random heads, no replacement
         random_idxs = np.random.choice(num_heads*num_layers, num_heads*num_layers, replace=False)
