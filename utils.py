@@ -591,7 +591,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
 
     print("ASSUMES OPENAI_API_KEY ENVIRONMENT VARIABLE IS SET")
     import os
-    openai.api_key = os.environ.get('OPENAI_API_KEY')
+    # openai.api_key = os.environ.get('OPENAI_API_KEY')
     
     for mdl in models.keys(): 
 

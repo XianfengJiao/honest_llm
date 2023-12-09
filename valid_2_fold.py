@@ -1,8 +1,3 @@
-import logging
-
-logging.basicConfig(format='%(asctime)s | %(levelname)s : %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 import torch
 import torch.nn.functional as F
 from einops import rearrange
@@ -19,13 +14,26 @@ import sys
 sys.path.append('../')
 from utils import alt_tqa_evaluate, flattened_idx_to_layer_head, layer_head_to_flattened_idx, get_interventions_dict, get_top_heads, get_separated_activations, get_com_directions
 import llama
+from utils import train_probes
 
 HF_NAMES = {
     'llama_7B': 'yahma/llama-7b-hf',
     'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
 }
 
-def get_top_heads_from_probes_and_accs(probes, all_head_accs_np, num_layers, num_heads, num_to_intervene, use_random_dir=False):
+def get_top_heads_and_save_accs(args, experiments_path, fold, train_idxs, val_idxs, separated_activations, separated_labels, num_layers, num_heads, seed, num_to_intervene, use_random_dir=False):
+
+    probes, all_head_accs_np = train_probes(seed, train_idxs, val_idxs, separated_activations, separated_labels, num_layers=num_layers, num_heads=num_heads)
+    all_head_accs_np = all_head_accs_np.reshape(num_layers, num_heads)
+
+    if args.collect == 'all':
+        save_path = f'{experiments_path}/fold_{fold}_{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(int(args.cur_rate * 100)).zfill(3)}_head_accs.npy'
+    elif args.collect == 'stimulus':
+        save_path = f'{experiments_path}/fold_{fold}_{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(args.stimulus_pos)}_head_accs.npy'
+    else:
+        save_path = f'{experiments_path}/fold_{fold}_{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_accs.npy'
+
+    np.save(save_path, all_head_accs_np)
     top_heads = []
 
     top_accs = np.argsort(all_head_accs_np.reshape(num_heads*num_layers))[::-1][:num_to_intervene] # 排序后反转取索引
@@ -36,7 +44,6 @@ def get_top_heads_from_probes_and_accs(probes, all_head_accs_np, num_layers, num
         top_heads = [flattened_idx_to_layer_head(idx, num_heads) for idx in random_idxs[:num_to_intervene]]
 
     return top_heads, probes
-
 
 
 def main(): 
@@ -70,12 +77,12 @@ def main():
         experiment_name = f'{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}'
     
     os.makedirs(f'/data/wtl/honest_llm/validation/{experiment_name}',exist_ok=True)
-    log_path = f'logs/{experiment_name}.log'
-    file_handler = logging.FileHandler(log_path)
-    logger.addHandler(file_handler)
+    # log_path = f'logs/valid_{experiment_name}.log'
+    # file_handler = logging.FileHandler(log_path)
+    # logger.addHandler(file_handler)
 
-    logger.info('Running:\n{}\n'.format(' '.join(sys.argv))) # command
-
+    # logger.info('Running:\n{}\n'.format(' '.join(sys.argv))) # command
+    print('Running:\n{}\n'.format(' '.join(sys.argv)))
     # set seeds
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -125,23 +132,12 @@ def main():
         head_wise_activations = [activations[:, args.stimulus_pos, :] for activations in head_wise_activations]
     head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
-
-    # load probes and accs
-    if args.collect == 'all':
-        probes = pkl.load(open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(int(args.cur_rate * 100)).zfill(3)}_probes.pkl', 'rb'))
-        all_head_accs_np = pkl.load(open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(int(args.cur_rate * 100)).zfill(3)}_head_accs.pkl', 'rb'))
-    elif args.collect == 'stimulus':
-        probes = pkl.load(open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(args.stimulus_pos)}_probes.pkl', 'rb'))
-        all_head_accs_np = pkl.load(open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(args.stimulus_pos)}_head_accs.pkl', 'rb'))
-    else:
-        probes = pkl.load(open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_probes.pkl', 'rb'))
-        all_head_accs_np = pkl.load(open(f'/data/jxf/probes/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_accs.pkl', 'rb'))
-
     separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
 
     # run k-fold cross validation
     results = []
-    experiments_path = f'/data/wtl/honest_llm/validation/'
+    experiments_path = f'/data/wtl/honest_llm/validation/{experiment_name}'
+    print(f'experiments_path: {experiments_path}')
     for i in range(args.num_fold):
 
         train_idxs = np.concatenate([fold_idxs[j] for j in range(args.num_fold) if j != i])
@@ -154,31 +150,20 @@ def main():
         val_set_idxs = np.array([x for x in train_idxs if x not in train_set_idxs])
 
         # save train and test splits
-        df.iloc[train_set_idxs].to_csv(f"/data/wtl/honest_llm/validation/{experiment_name}/fold_{i}_train_seed_{args.seed}.csv", index=False)
-        df.iloc[val_set_idxs].to_csv(f"/data/wtl/honest_llm/validation/{experiment_name}/fold_{i}_val_seed_{args.seed}.csv", index=False)
-        df.iloc[test_idxs].to_csv(f"/data/wtl/honest_llm/validation/{experiment_name}/fold_{i}_test_seed_{args.seed}.csv", index=False)
+        df.iloc[train_set_idxs].to_csv(f"{experiments_path}/fold_{i}_train_seed_{args.seed}.csv", index=False)
+        df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
+        df.iloc[test_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
         # get directions
         if args.use_center_of_mass:
             com_directions = get_com_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels)
         else:
             com_directions = None
-        top_heads, probes = get_top_heads_from_probes_and_accs(probes, all_head_accs_np, num_layers, num_heads, args.num_heads, args.use_random_dir)
+        top_heads, probes = get_top_heads_and_save_accs(args, experiments_path, i, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, args.use_random_dir)
 
-        logger.info("Heads intervened: ", sorted(top_heads))
+        print("Heads intervened: ", sorted(top_heads))
     
         interventions = get_interventions_dict(top_heads, probes, head_wise_activations, num_heads, args.use_center_of_mass, args.use_random_dir, com_directions)
-
-        # edit model
-        for head_out_name, list_int_vec in interventions.items():
-            layer_no = int(head_out_name.split('.')[2])
-            displacement = np.zeros((int(num_heads), int(model.config.hidden_size / num_heads)))
-            for head_no, head_vec, std in list_int_vec:
-                displacement[head_no] = args.alpha * std * head_vec
-            displacement = torch.tensor(rearrange(displacement, 'h d -> (h d)'), device=device)
-            bias_tobe = F.linear(displacement.to(torch.float16), model.model.layers[layer_no].self_attn.o_proj.weight).to(device)
-            model.model.layers[layer_no].self_attn.o_proj.bias = torch.nn.parameter.Parameter(bias_tobe)
-
 
         def lt_modulated_vector_add(head_output, layer_name, start_edit_location='lt'): 
             head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
@@ -202,10 +187,10 @@ def main():
                     
         curr_fold_results = alt_tqa_evaluate(
             {args.model_name: model}, 
-            ['judge', 'info', 'mc'], 
-            f'/data/wtl/honest_llm/validation/{experiment_name}/fold_{i}_test_seed_{args.seed}.csv', 
-            f'results_dump/answer_dump/{filename}.csv', 
-            f'results_dump/summary_dump/{filename}.csv', 
+            ['mc'], 
+            f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
+            f'{experiments_path}/{filename}.csv', 
+            f'{experiments_path}/{filename}.csv', 
             device=args.device, 
             interventions=interventions, 
             intervention_fn=lt_modulated_vector_add, 
