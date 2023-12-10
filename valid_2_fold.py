@@ -58,11 +58,11 @@ def main():
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
     parser.add_argument('--use_center_of_mass', action='store_true', help='use center of mass direction', default=False)
     parser.add_argument('--use_random_dir', action='store_true', help='use random direction', default=False)
-    parser.add_argument('--device', type=int, default=1, help='device')
+    parser.add_argument('--device', type=int, default=3, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--judge_name', type=str, required=False)
     parser.add_argument('--info_name', type=str, required=False)
-    parser.add_argument('--collect', type=str, default='stimulus')
+    parser.add_argument('--collect', type=str, default='stimulus_mean')
     parser.add_argument('--cut_type', type=str, default='')
     parser.add_argument('--stimulus_pos', type=int, default='6')
     parser.add_argument('--cur_rate', type=float, default='1')
@@ -187,10 +187,10 @@ def main():
                     
         curr_fold_results = alt_tqa_evaluate(
             {args.model_name: model}, 
-            ['mc'], 
+            ['mc','bleu','bleurt'], 
             f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
-            f'{experiments_path}/{filename}.csv', 
-            f'{experiments_path}/{filename}.csv', 
+            f'{experiments_path}/answer_{filename}.csv', 
+            f'{experiments_path}/summary_{filename}.csv', 
             device=args.device, 
             interventions=interventions, 
             intervention_fn=lt_modulated_vector_add, 

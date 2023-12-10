@@ -629,7 +629,12 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
                 questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
                                 device=device, cache_dir=cache_dir, verbose=verbose,
                                 interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
-
+            
+            # ---new add by wtl---
+            questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
+                                device=device, cache_dir=cache_dir, verbose=verbose,
+                                interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
+            # ---new add by wtl---                   
             utilities.save_questions(questions, output_path)
 
             if 'mc' in metric_names:
