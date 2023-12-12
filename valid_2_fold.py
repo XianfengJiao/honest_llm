@@ -80,7 +80,7 @@ def main():
     else:
         experiment_name = f'{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}'
     if args.use_center_of_mass:
-        experiment_name += f'_{args.direction_type}'
+        experiment_name += f'_{args.direction_type}_alpha{args.alpha}'
     os.makedirs(f'/data/jxf/honest_llm/validation/{experiment_name}',exist_ok=True)
     # log_path = f'logs/valid_{experiment_name}.log'
     # file_handler = logging.FileHandler(log_path)
