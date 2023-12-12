@@ -93,7 +93,7 @@ def main():
     np.random.seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
 
-    df = pd.read_csv('/home/jxf/code/honest_llm/TruthfulQA/data/v0/TruthfulQA.csv')
+    df = pd.read_csv('./TruthfulQA/data/v0/TruthfulQA.csv')
 
     # order csv by huggingface order, the order used to save activations
     dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
