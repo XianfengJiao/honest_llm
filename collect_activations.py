@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='llama_7B')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2')
-    parser.add_argument('--collect', type=str, default='stimulus_mean')
+    parser.add_argument('--collect', type=str, default='all')
     parser.add_argument('--cut_type', type=str, default='')
     parser.add_argument('--device', type=int, default=1)
     args = parser.parse_args()
@@ -45,6 +45,7 @@ def main():
 
     if args.dataset_name == "tqa_mc2": 
         dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
+        ref_df = pd.read_csv('/home/jxf/code/honest_llm/TruthfulQA/data/v0/TruthfulQA.csv')
         if 'all' in args.collect:
             formatter = tokenized_tqa_all
         elif 'stimulus' in args.collect:
@@ -57,6 +58,7 @@ def main():
             else:
                 pos_fn = lambda x: len(x)
             formatter = partial(tokenized_tqa_cut, pos=pos_fn)
+        formatter = partial(formatter, ref_df=ref_df)
     elif args.dataset_name == "tqa_gen": 
         dataset = load_dataset("truthful_qa", 'generation')['validation']
         formatter = tokenized_tqa_gen
@@ -67,12 +69,11 @@ def main():
         raise ValueError("Invalid dataset name")
 
     print("Tokenizing prompts")
-    if args.dataset_name == "tqa_gen" or args.dataset_name == "tqa_gen_end_q": 
-        prompts, labels, categories = formatter(dataset, tokenizer)
-        with open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}_categories.pkl', 'wb') as f:
-            pickle.dump(categories, f)
-    else: 
-        prompts, labels, tokens = formatter(dataset, tokenizer)
+    prompts, labels, categories, tokens = formatter(dataset, tokenizer)
+
+    with open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_categories.pkl', 'wb') as f:
+        pickle.dump(categories, f)
+        exit(0)
 
     all_layer_wise_activations = []
     all_head_wise_activations = []
@@ -96,6 +97,9 @@ def main():
         elif args.collect == 'all':
             all_layer_wise_activations.append(layer_wise_activations)
             all_head_wise_activations.append(head_wise_activations)
+        else:
+            all_layer_wise_activations.append(layer_wise_activations[:, -1, :])
+            all_head_wise_activations.append(head_wise_activations[:, -1, :])
 
     print("Saving labels")
     np.save(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy', labels)

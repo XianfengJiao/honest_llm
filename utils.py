@@ -20,6 +20,8 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 from sklearn.linear_model import LogisticRegression
 import pickle
 from functools import partial
+from sklearn.decomposition import PCA
+from itertools import islice
 
 from truthfulqa import utilities, models, metrics
 import openai
@@ -99,15 +101,17 @@ def tokenized_tqa(dataset, tokenizer):
     
     return all_prompts, all_labels
 
-def tokenized_tqa_stimulus(dataset, tokenizer): 
+def tokenized_tqa_stimulus(dataset, tokenizer, ref_df=None): 
 
     all_prompts = []
     all_labels = []
     all_tokens = []
+    all_categories = []
     for i in range(len(dataset)):
         question = dataset[i]['question']
         choices = dataset[i]['mc2_targets']['choices']
         labels = dataset[i]['mc2_targets']['labels']
+        categorie = ref_df.loc[ref_df['Question'] == question, 'Category'].iloc[0] if ref_df is not None else 'Unknown'
 
         assert len(choices) == len(labels), (len(choices), len(labels))
 
@@ -124,18 +128,21 @@ def tokenized_tqa_stimulus(dataset, tokenizer):
             all_tokens.append(tokens)
             all_prompts.append(prompt)
             all_labels.append(label)
+            all_categories.append(categorie)
     
-    return all_prompts, all_labels, all_tokens
+    return all_prompts, all_labels, all_categories, all_tokens
 
-def tokenized_tqa_cut(dataset, tokenizer, pos=None):
+def tokenized_tqa_cut(dataset, tokenizer, pos=None, ref_df=None):
     
     all_prompts = []
     all_labels = []
     all_tokens = []
+    all_categories = []
     for i in range(len(dataset)):
         question = dataset[i]['question']
         choices = dataset[i]['mc2_targets']['choices']
         labels = dataset[i]['mc2_targets']['labels']
+        categorie = ref_df.loc[ref_df['Question'] == question, 'Category'].iloc[0] if ref_df is not None else 'Unknown'
 
         assert len(choices) == len(labels), (len(choices), len(labels))
 
@@ -154,19 +161,22 @@ def tokenized_tqa_cut(dataset, tokenizer, pos=None):
             all_tokens.append(tokens)
             all_prompts.append(prompt)
             all_labels.append(label)
+            all_categories.append(categorie)
 
-    return all_prompts, all_labels, all_tokens
+    return all_prompts, all_labels, all_categories, all_tokens
 
 
-def tokenized_tqa_all(dataset, tokenizer): 
+def tokenized_tqa_all(dataset, tokenizer, ref_df=None): 
 
     all_prompts = []
     all_labels = []
     all_tokens = []
+    all_categories = []
     for i in range(len(dataset)):
         question = dataset[i]['question']
         choices = dataset[i]['mc2_targets']['choices']
         labels = dataset[i]['mc2_targets']['labels']
+        categorie = ref_df.loc[ref_df['Question'] == question, 'Category'].iloc[0] if ref_df is not None else 'Unknown'
 
         assert len(choices) == len(labels), (len(choices), len(labels))
 
@@ -181,14 +191,16 @@ def tokenized_tqa_all(dataset, tokenizer):
             all_tokens.append(tokens)
             all_prompts.append(prompt)
             all_labels.append(label)
+            all_categories.append(categorie)
     
-    return all_prompts, all_labels, all_tokens
+    return all_prompts, all_labels, all_categories, all_tokens
 
 def tokenized_tqa_gen_end_q(dataset, tokenizer): 
 
     all_prompts = []
     all_labels = []
     all_categories = []
+    all_tokens = []
     for i in range(len(dataset)): 
         question = dataset[i]['question']
         category = dataset[i]['category']
@@ -199,6 +211,8 @@ def tokenized_tqa_gen_end_q(dataset, tokenizer):
             answer = dataset[i]['correct_answers'][j]
             prompt = format_truthfulqa_end_q(question, answer, rand_question)
             prompt = tokenizer(prompt, return_tensors = 'pt').input_ids
+            tokens = tokenizer.convert_ids_to_tokens(prompt[0])
+            all_tokens.append(tokens)
             all_prompts.append(prompt)
             all_labels.append(1)
             all_categories.append(category)
@@ -207,17 +221,20 @@ def tokenized_tqa_gen_end_q(dataset, tokenizer):
             answer = dataset[i]['incorrect_answers'][j]
             prompt = format_truthfulqa_end_q(question, answer, rand_question)
             prompt = tokenizer(prompt, return_tensors = 'pt').input_ids
+            tokens = tokenizer.convert_ids_to_tokens(prompt[0])
+            all_tokens.append(tokens)
             all_prompts.append(prompt)
             all_labels.append(0)
             all_categories.append(category)
         
-    return all_prompts, all_labels, all_categories
+    return all_prompts, all_labels, all_categories, all_tokens
 
 def tokenized_tqa_gen(dataset, tokenizer): 
 
     all_prompts = []
     all_labels = []
     all_categories = []
+    all_tokens = []
     for i in range(len(dataset)): 
         question = dataset[i]['question']
         category = dataset[i]['category']
@@ -226,6 +243,8 @@ def tokenized_tqa_gen(dataset, tokenizer):
             answer = dataset[i]['correct_answers'][j]
             prompt = format_truthfulqa(question, answer)
             prompt = tokenizer(prompt, return_tensors = 'pt').input_ids
+            tokens = tokenizer.convert_ids_to_tokens(prompt[0])
+            all_tokens.append(tokens)
             all_prompts.append(prompt)
             all_labels.append(1)
             all_categories.append(category)
@@ -234,11 +253,13 @@ def tokenized_tqa_gen(dataset, tokenizer):
             answer = dataset[i]['incorrect_answers'][j]
             prompt = format_truthfulqa(question, answer)
             prompt = tokenizer(prompt, return_tensors = 'pt').input_ids
+            tokens = tokenizer.convert_ids_to_tokens(prompt[0])
+            all_tokens.append(tokens)
             all_prompts.append(prompt)
             all_labels.append(0)
             all_categories.append(category)
         
-    return all_prompts, all_labels, all_categories
+    return all_prompts, all_labels, all_categories, all_tokens
 
 
 def get_llama_activations_bau(model, prompt, device): 
@@ -334,23 +355,23 @@ def tqa_run_answers(frame, engine, tag, preset, model=None, tokenizer=None, verb
             with TraceDict(model, layers_to_intervene, edit_output=intervene) as ret: 
                 input_ids = input_ids.to(device)
                 model_gen_tokens = model.generate(input_ids, top_k=1, max_length=max_len, num_return_sequences=1,)[:, input_ids.shape[-1]:]
-            
-            model_gen_str = tokenizer.decode(model_gen_tokens[0], skip_special_tokens=True)
-            model_gen_str = model_gen_str.strip()
+                
+                model_gen_str = tokenizer.decode(model_gen_tokens[0], skip_special_tokens=True)
+                model_gen_str = model_gen_str.strip()
 
-            try: 
-                # remove everything after 'Q:'
-                model_gen_str = model_gen_str.split("Q:")[0].strip()
-                # keep everything after A: 
-                model_gen_str = model_gen_str.split("A:")[1].strip()
-            except: 
-                pass
+                try: 
+                    # remove everything after 'Q:'
+                    model_gen_str = model_gen_str.split("Q:")[0].strip()
+                    # keep everything after A: 
+                    model_gen_str = model_gen_str.split("A:")[1].strip()
+                except: 
+                    pass
 
-            if verbose: 
-                print("MODEL_OUTPUT: ", model_gen_str)
-            
-            frame.loc[idx, tag] = model_gen_str
-            sequences.append(model_gen_str)
+                if verbose: 
+                    print("MODEL_OUTPUT: ", model_gen_str)
+                
+                frame.loc[idx, tag] = model_gen_str
+                sequences.append(model_gen_str)
 
             # --- intervention code --- #
 
@@ -591,7 +612,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
 
     print("ASSUMES OPENAI_API_KEY ENVIRONMENT VARIABLE IS SET")
     import os
-    openai.api_key = os.environ.get('OPENAI_API_KEY')
+    # openai.api_key = os.environ.get('OPENAI_API_KEY')
     
     for mdl in models.keys(): 
 
@@ -629,8 +650,12 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
                 questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
                                 device=device, cache_dir=cache_dir, verbose=verbose,
                                 interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
-
-            utilities.save_questions(questions, output_path)
+            
+            # ---new add by wtl---
+            questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
+                                device=device, cache_dir=cache_dir, verbose=verbose,
+                                interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
+            # ---new add by wtl---                   
 
             if 'mc' in metric_names:
                 questions = tqa_run_probs(questions, ENGINE_MAP[mdl], mdl, model=llama_model, tokenizer=llama_tokenizer, preset=preset, device=device, cache_dir=cache_dir, verbose=False, interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
@@ -746,7 +771,7 @@ def train_probes(seed, train_set_idxs, val_set_idxs, separated_head_wise_activat
     y_train = np.concatenate([separated_labels[i] for i in train_set_idxs], axis = 0)
     y_val = np.concatenate([separated_labels[i] for i in val_set_idxs], axis = 0)
 
-    for layer in tqdm(range(num_layers)): 
+    for layer in tqdm(range(num_layers), desc='train probes'): 
         for head in range(num_heads): 
             X_train = all_X_train[:,layer,head,:]
             X_val = all_X_val[:,layer,head,:]
@@ -768,8 +793,8 @@ def get_top_heads(train_idxs, val_idxs, separated_activations, separated_labels,
 
     top_heads = []
 
-    top_accs = np.argsort(all_head_accs_np.reshape(num_heads*num_layers))[::-1][:num_to_intervene]
-    top_heads = [flattened_idx_to_layer_head(idx, num_heads) for idx in top_accs]
+    top_accs = np.argsort(all_head_accs_np.reshape(num_heads*num_layers))[::-1][:num_to_intervene] # 排序后反转取索引
+    top_heads = [flattened_idx_to_layer_head(idx, num_heads) for idx in top_accs]  # 准确率最高的层和head的索引
     if use_random_dir: 
         # overwrite top heads with random heads, no replacement
         random_idxs = np.random.choice(num_heads*num_layers, num_heads*num_layers, replace=False)
@@ -837,3 +862,63 @@ def get_com_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, sepa
     com_directions = np.array(com_directions)
 
     return com_directions
+
+def project_onto_direction(H, direction):
+    """Project matrix H (n, d_1) onto direction vector (d_2,)"""
+    # Calculate the magnitude of the direction vector
+     # Ensure H and direction are on the same device (CPU or GPU)
+    if type(H) != torch.Tensor:
+        H = torch.Tensor(H)
+    if type(direction) != torch.Tensor:
+        direction = torch.Tensor(direction)
+        direction = direction.to(H.device)
+    mag = torch.norm(direction)
+    assert not torch.isinf(mag).any()
+    # Calculate the projection
+    projection = H.matmul(direction) / mag
+    return projection
+
+def gen_sample_directions(activations, labels):
+    sample_direction = []
+    for i ,(activation, label) in enumerate(zip(activations, labels)):
+        direction = activation[np.array(label) == 1].mean(axis=0) - activation[np.array(label) == 0].mean(axis=0)
+        sample_direction.append(-1 ** i * direction)
+    
+    sample_direction = np.vstack(sample_direction)
+    return sample_direction
+
+def get_sign(activations, labels, component):
+    activations = np.concatenate(activations)
+    transformed_activations = project_onto_direction(activations, component).cpu().numpy()
+    pca_outputs_comp = [list(islice(transformed_activations, sum(len(c) for c in labels[:i]), sum(len(c) for c in labels[:i+1]))) for i in range(len(labels))]
+    pca_outputs_min = np.mean([np.array(o)[np.array(labels[i]) == 1].mean() < np.array(o)[np.array(labels[i]) == 0].mean() for i, o in enumerate(pca_outputs_comp)])
+    pca_outputs_max = np.mean([np.array(o)[np.array(labels[i]) == 1].mean() > np.array(o)[np.array(labels[i]) == 0].mean() for i, o in enumerate(pca_outputs_comp)])
+
+    sign = np.sign(pca_outputs_max - pca_outputs_min)
+    if sign == 0:
+        sign = 1
+    
+    return sign
+
+def get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels): 
+
+    pca_directions = []
+
+    for layer in tqdm(range(num_layers), desc='gen pca directions:'): 
+        for head in range(num_heads): 
+            usable_idxs = np.concatenate([train_set_idxs, val_set_idxs], axis=0)
+            usable_head_wise_activations = [separated_head_wise_activations[i][:,layer,head,:] for i in usable_idxs]
+            usable_labels = [separated_labels[i] for i in usable_idxs]
+            # 生成所有方向，有正有负增加多样性，放到一个 array 中
+            usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels)
+            # pca 生成第一主成分
+            pca_model = PCA(n_components=1, whiten=False).fit(usable_head_wise_directions)
+            component = pca_model.components_[0]
+            # 确定每个主成分的方向
+            sign = get_sign(usable_head_wise_activations, usable_labels, component)
+            pca_directions.append(component * sign)
+
+    # 返回方向
+    pca_directions = np.array(pca_directions)
+
+    return pca_directions

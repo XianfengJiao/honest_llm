@@ -167,3 +167,4 @@ validation/splits
 validation/sh*.sh
 validation/check_results.ipynb
 TruthfulQA
+*.bk
