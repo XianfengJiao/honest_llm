@@ -900,7 +900,7 @@ def get_sign(activations, labels, component):
     
     return sign
 
-def get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels): 
+def get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_components=1): 
 
     pca_directions = []
 
@@ -912,11 +912,17 @@ def get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, sepa
             # 生成所有方向，有正有负增加多样性，放到一个 array 中
             usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels)
             # pca 生成第一主成分
-            pca_model = PCA(n_components=1, whiten=False).fit(usable_head_wise_directions)
-            component = pca_model.components_[0]
-            # 确定每个主成分的方向
-            sign = get_sign(usable_head_wise_activations, usable_labels, component)
-            pca_directions.append(component * sign)
+            pca_model = PCA(n_components=n_components, whiten=False).fit(usable_head_wise_directions)
+
+            pca_component = torch.tensor(0)
+            for i in range(n_components):
+                component = pca_model.components_[i]
+                # 确定每个主成分的方向
+                sign = get_sign(usable_head_wise_activations, usable_labels, component)
+
+                pca_component += component * sign * torch.exp(-i)
+
+            pca_directions.append(pca_component)
 
     # 返回方向
     pca_directions = np.array(pca_directions)

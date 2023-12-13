@@ -53,6 +53,7 @@ def main():
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
     parser.add_argument('--activations_dataset', type=str, default='tqa_gen_end_q', help='feature bank for calculating std along direction')
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
+    parser.add_argument('--n_components', type=int, default=1)
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
@@ -81,6 +82,8 @@ def main():
         experiment_name = f'{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}'
     if args.use_center_of_mass:
         experiment_name += f'_{args.direction_type}_alpha{int(args.alpha)}'
+        if args.direction_type == 'pca':
+            experiment_name += f'_n{args.n_components}'
     os.makedirs(f'/data/jxf/honest_llm/validation/{experiment_name}',exist_ok=True)
     # log_path = f'logs/valid_{experiment_name}.log'
     # file_handler = logging.FileHandler(log_path)
@@ -164,7 +167,7 @@ def main():
             if args.direction_type == 'mean':
                 com_directions = get_com_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels)
             elif args.direction_type == 'pca':
-                com_directions = get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels)
+                com_directions = get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_components=args.n_components)
         else:
             com_directions = None
         top_heads, probes = get_top_heads_and_save_accs(args, experiments_path, i, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, args.use_random_dir)

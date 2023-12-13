@@ -71,9 +71,9 @@ def main():
     print("Tokenizing prompts")
     prompts, labels, categories, tokens = formatter(dataset, tokenizer)
 
-    with open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_categories.pkl', 'wb') as f:
-        pickle.dump(categories, f)
-        exit(0)
+    # with open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_categories.pkl', 'wb') as f:
+    #     pickle.dump(categories, f)
+    #     exit(0)
 
     all_layer_wise_activations = []
     all_head_wise_activations = []
