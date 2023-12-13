@@ -914,13 +914,13 @@ def get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, sepa
             # pca 生成第一主成分
             pca_model = PCA(n_components=n_components, whiten=False).fit(usable_head_wise_directions)
 
-            pca_component = torch.tensor(0)
+            pca_component = np.zeros(pca_model.components_[0].shape)
             for i in range(n_components):
                 component = pca_model.components_[i]
                 # 确定每个主成分的方向
                 sign = get_sign(usable_head_wise_activations, usable_labels, component)
 
-                pca_component += component * sign * torch.exp(-i)
+                pca_component += component * sign * np.exp(-i)
 
             pca_directions.append(pca_component)
 
