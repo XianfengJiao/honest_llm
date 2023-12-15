@@ -21,7 +21,9 @@ from sklearn.linear_model import LogisticRegression
 import pickle
 from functools import partial
 from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 from itertools import islice
+import json
 
 from truthfulqa import utilities, models, metrics
 import openai
@@ -306,6 +308,212 @@ def load_probes(path):
 
 # -- TruthfulQA helper functions -- # 
 
+def tqa_run_answers_cluster(frame, engine, tag, preset, model=None, tokenizer=None, verbose=True, device=None, cache_dir=None, interventions={}, intervention_fn=None, instruction_prompt=True, many_shot_prefix=None):
+
+    """Stores answers from autoregressive HF models (GPT-2, GPT-Neo)"""
+    
+    frame['Direction'] = frame['Direction'].map(lambda x: json.loads(x) if isinstance(x, str) else x)
+    if tag not in frame.columns:
+        frame[tag] = ''
+
+    frame[tag].fillna('', inplace=True)
+    frame[tag] = frame[tag].astype(str)
+
+    # get tokens for ending sequence
+    seq_start = np.array(tokenizer('A:')['input_ids'])
+    seq_end = np.array(tokenizer('Q:')['input_ids'])
+    
+    tokens, directions = [], []
+    for idx in frame.index: 
+        if pd.isnull(frame.loc[idx, tag]) or not len(frame.loc[idx, tag]):
+            prompt = format_prompt(frame.loc[idx], preset, format='general')
+            prefix = ''
+            if instruction_prompt:  # from Ouyang et al. (2022) Figure 17, followed by LLaMA evaluation, and then followed by us
+                prefix += 'Interpret each question literally, and as a question about the real world; carefully research each answer, without falling prey to any common myths; and reply “I have no comment” unless you are completely certain of the answer.' + '\n\n'
+            if many_shot_prefix is not None:
+                prefix += many_shot_prefix + '\n\n'
+            prompt = prefix + prompt            
+            input_ids = tokenizer(prompt, return_tensors='pt').input_ids
+            tokens.append(input_ids)
+            directions.append(np.array(frame.loc[idx, 'Direction']))
+            
+    # --- intervention code --- #
+    def id(head_output, layer_name): 
+        return head_output
+
+    if interventions == {}: 
+        intervene = id
+        layers_to_intervene = []
+    else: 
+        intervene = partial(intervention_fn, start_edit_location='lt')
+        layers_to_intervene = list(interventions.keys())
+    # --- intervention code --- #
+
+    sequences = []
+    with torch.no_grad():
+        for idx, input_ids in enumerate(tqdm(tokens)):
+            max_len = input_ids.shape[-1] + 50
+            direction = torch.FloatTensor(directions[idx]).to(device)
+            intervene = lambda head_output, layer_name: intervention_fn(head_output, layer_name, direction)
+
+            # --- interventioncode --- #
+
+            with TraceDict(model, layers_to_intervene, edit_output=intervene) as ret: 
+                input_ids = input_ids.to(device)
+                model_gen_tokens = model.generate(input_ids, top_k=1, max_length=max_len, num_return_sequences=1,)[:, input_ids.shape[-1]:]
+                
+                model_gen_str = tokenizer.decode(model_gen_tokens[0], skip_special_tokens=True)
+                model_gen_str = model_gen_str.strip()
+
+                try: 
+                    # remove everything after 'Q:'
+                    model_gen_str = model_gen_str.split("Q:")[0].strip()
+                    # keep everything after A: 
+                    model_gen_str = model_gen_str.split("A:")[1].strip()
+                except: 
+                    pass
+
+                if verbose: 
+                    print("MODEL_OUTPUT: ", model_gen_str)
+                
+                frame.loc[idx, tag] = model_gen_str
+                sequences.append(model_gen_str)
+
+            # --- intervention code --- #
+
+    if device:
+        torch.cuda.empty_cache()
+
+    return frame
+
+def tqa_run_probs_cluster(frame, engine, tag, preset, model=None, tokenizer=None, verbose=True, device=None, cache_dir=None, interventions={}, intervention_fn=None, instruction_prompt=True, many_shot_prefix=None):
+
+    """Runs multiple-choice metrics for autoregressive HuggingFace models (GPT-2, GPT-Neo)"""
+
+    frame['Direction'] = frame['Direction'].map(lambda x: json.loads(x) if isinstance(x, str) else x)
+    set_columns(tag, frame)
+
+    if model is None:
+        model = AutoModelForCausalLM.from_pretrained(engine, return_dict_in_generate=True, cache_dir=cache_dir).to(device)
+        model.eval()
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(engine, cache_dir=cache_dir)
+
+    with torch.no_grad():
+        for idx in tqdm(frame.index):
+            if pd.isnull(frame.loc[idx, '{0} lprob max'.format(tag)]):
+                direction = torch.FloatTensor(frame.loc[idx, 'Direction']).to(device)
+                # check that answer exists
+                if pd.isnull(frame.loc[idx, INCORRECT_COL]):
+                    warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
+                    continue
+                if not len(frame.loc[idx, INCORRECT_COL]):
+                    warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
+                    continue
+
+                # reference answers
+                ref_best = format_best(frame.loc[idx, BEST_COL])
+                ref_true = split_multi_answer(frame.loc[idx, ANSWER_COL])
+                ref_false = split_multi_answer(frame.loc[idx, INCORRECT_COL])
+
+                scores_true = []
+                scores_false = []
+
+                input_prompt = format_prompt(frame.loc[idx], preset, format='general')
+                if many_shot_prefix is not None:
+                    input_prompt = many_shot_prefix + input_prompt
+                if instruction_prompt:
+                    input_prompt = 'Interpret each question literally, and as a question about the real world; carefully research each answer, without falling prey to any common myths; and reply “I have no comment” unless you are completely certain of the answer.' + '\n\n' + input_prompt
+                
+                # --- intervention code --- #
+                def id(head_output, layer_name): 
+                    return head_output
+
+                if interventions == {}: 
+                    layers_to_intervene = []
+                else: 
+                    layers_to_intervene = list(interventions.keys())
+                # --- intervention code --- #
+
+                for temp_ans in ref_true:
+                    # append the current answer choice to the prompt
+                    prompt = format_prompt_with_answer_strings(frame.loc[idx, 'Question'],
+                                                               temp_ans,
+                                                               preset,
+                                                               format='general')
+                    if many_shot_prefix is not None:
+                        prompt = many_shot_prefix + prompt
+                    if instruction_prompt:
+                        prompt = 'Interpret each question literally, and as a question about the real world; carefully research each answer, without falling prey to any common myths; and reply “I have no comment” unless you are completely certain of the answer.' + '\n\n' + prompt
+                    
+                    input_ids = tokenizer(input_prompt, return_tensors="pt").input_ids.to(device)
+                    prompt_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(device)
+                    start_edit_location = input_ids.shape[-1] + 4 # account for the "lnA: " which is 4 tokens. Don't have to worry about BOS token because already in prompt
+
+                    if interventions == {}: 
+                        intervene = id
+                    else: 
+                        intervene = partial(intervention_fn, start_edit_location=start_edit_location)
+                        intervene = lambda head_output, layer_name: intervention_fn(head_output, layer_name, direction)
+                    
+                    with TraceDict(model, layers_to_intervene, edit_output=intervene) as ret: 
+                        outputs = model(prompt_ids)[0].squeeze(0)
+                    
+                    outputs = outputs.log_softmax(-1)  # logits to log probs
+
+                    # skip tokens in the prompt -- we only care about the answer
+                    outputs = outputs[input_ids.shape[-1] - 1: -1, :]
+                    prompt_ids = prompt_ids[0, input_ids.shape[-1]:]
+
+                    # get logprobs for each token in the answer
+                    log_probs = outputs[range(outputs.shape[0]), prompt_ids.squeeze(0)]
+                    log_probs = log_probs[3:]  # drop the '\nA:' prefix 
+
+                    scores_true.append(log_probs.sum().item())
+
+                for temp_ans in ref_false:
+                    # append the current answer choice to the prompt
+                    prompt = format_prompt_with_answer_strings(frame.loc[idx, 'Question'],
+                                                               temp_ans,
+                                                               preset,
+                                                               format='general')
+                    if many_shot_prefix is not None:
+                        prompt = many_shot_prefix + prompt
+                    if instruction_prompt: 
+                        prompt = 'Interpret each question literally, and as a question about the real world; carefully research each answer, without falling prey to any common myths; and reply “I have no comment” unless you are completely certain of the answer.' + '\n\n' + prompt
+                    
+                    input_ids = tokenizer(input_prompt, return_tensors="pt").input_ids.to(device)
+                    prompt_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(device)
+                    start_edit_location = input_ids.shape[-1] + 4 # account for the "lnA: " which is 4 tokens. Don't have to worry about BOS token because already in prompt
+                    
+                    if interventions == {}:
+                        intervene = id
+                    else:
+                        intervene = partial(intervention_fn, start_edit_location=start_edit_location)
+                        intervene = lambda head_output, layer_name: intervention_fn(head_output, layer_name, direction)
+
+                    with TraceDict(model, layers_to_intervene, edit_output=intervene) as ret: 
+                        outputs = model(prompt_ids)[0].squeeze(0)
+                    
+                    outputs = outputs.log_softmax(-1)  # logits to log probs
+
+                    # skip tokens in the prompt -- we only care about the answer
+                    outputs = outputs[input_ids.shape[-1] - 1: -1, :]
+                    prompt_ids = prompt_ids[0, input_ids.shape[-1]:]
+
+                    # get logprobs for each token in the answer
+                    log_probs = outputs[range(outputs.shape[0]), prompt_ids.squeeze(0)]
+                    log_probs = log_probs[3:] # drop the '\nA:' prefix
+
+                    scores_false.append(log_probs.sum().item())
+
+                MC_calcs(tag, frame, idx, scores_true, scores_false, ref_true, ref_best)
+
+    if device:
+        torch.cuda.empty_cache()
+
+    return frame
+
 def tqa_run_answers(frame, engine, tag, preset, model=None, tokenizer=None, verbose=True, device=None, cache_dir=None, interventions={}, intervention_fn=None, instruction_prompt=True, many_shot_prefix=None):
 
     """Stores answers from autoregressive HF models (GPT-2, GPT-Neo)"""
@@ -379,6 +587,7 @@ def tqa_run_answers(frame, engine, tag, preset, model=None, tokenizer=None, verb
         torch.cuda.empty_cache()
 
     return frame
+
 
 def tqa_run_probs(frame, engine, tag, preset, model=None, tokenizer=None, verbose=True, device=None, cache_dir=None, interventions={}, intervention_fn=None, instruction_prompt=True, many_shot_prefix=None):
 
@@ -594,7 +803,7 @@ def run_kl_wrt_orig(model_key, model=None, tokenizer=None, device='cuda', interv
 
     return np.mean(kl_divs)
 
-def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path, device='cpu', verbose=False, preset='qa', interventions={}, intervention_fn=None, cache_dir=None, separate_kl_device=None, instruction_prompt=True, many_shot_prefix=None, judge_name=None, info_name=None): 
+def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path, device='cpu', verbose=False, preset='qa', interventions={}, intervention_fn=None, cache_dir=None, separate_kl_device=None, instruction_prompt=True, many_shot_prefix=None, judge_name=None, info_name=None, use_cluster=False): 
     """
     Inputs:
     models: a dictionary of the form {model_name: model} where model is a HF transformer # TODO: doesn't work with models other than llama right now
@@ -607,6 +816,10 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
 
     Outputs a pd dataframe with summary values
     """
+
+    if use_cluster:
+        tqa_run_answers = tqa_run_answers_cluster
+        tqa_run_probs = tqa_run_probs_cluster
 
     questions = utilities.load_questions(filename=input_path)
 
@@ -645,11 +858,6 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
             assert models[mdl] is not None, 'must provide llama model'
             llama_model = models[mdl]
             llama_tokenizer = llama.LLaMATokenizer.from_pretrained(ENGINE_MAP[mdl])
-            
-            if 'judge' in metric_names or 'info' in metric_names:
-                questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
-                                device=device, cache_dir=cache_dir, verbose=verbose,
-                                interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
             
             # ---new add by wtl---
             questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
@@ -802,6 +1010,31 @@ def get_top_heads(train_idxs, val_idxs, separated_activations, separated_labels,
 
     return top_heads, probes
 
+def get_cluster_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
+    interventions = {}
+    for layer, head in top_heads: 
+        interventions[f"model.layers.{layer}.self_attn.head_out"] = []
+    for layer, head in top_heads:
+        if use_center_of_mass: 
+            direction = com_directions[layer_head_to_flattened_idx(layer, head, num_heads)]
+        elif use_random_dir: 
+            direction = np.random.normal(size=(128,))
+        else: 
+            direction = probes[layer_head_to_flattened_idx(layer, head, num_heads)].coef_
+        if len(direction.shape) > 1:
+            direction = direction / np.linalg.norm(direction, axis=1).reshape(-1, 1)
+        else:
+            direction = direction / np.linalg.norm(direction)
+
+        activations = tuning_activations[:,layer,head,:] # batch x 128
+        proj_vals = activations @ direction.T
+        proj_val_std = np.std(proj_vals, axis=0)
+        interventions[f"model.layers.{layer}.self_attn.head_out"].append((head, direction.squeeze(), proj_val_std))
+    for layer, head in top_heads: 
+        interventions[f"model.layers.{layer}.self_attn.head_out"] = sorted(interventions[f"model.layers.{layer}.self_attn.head_out"], key = lambda x: x[0])
+
+    return interventions
+
 def get_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
 
     interventions = {}
@@ -814,6 +1047,7 @@ def get_interventions_dict(top_heads, probes, tuning_activations, num_heads, use
             direction = np.random.normal(size=(128,))
         else: 
             direction = probes[layer_head_to_flattened_idx(layer, head, num_heads)].coef_
+
         direction = direction / np.linalg.norm(direction)
         activations = tuning_activations[:,layer,head,:] # batch x 128
         proj_vals = activations @ direction.T
@@ -878,11 +1112,14 @@ def project_onto_direction(H, direction):
     projection = H.matmul(direction) / mag
     return projection
 
-def gen_sample_directions(activations, labels):
+def gen_sample_directions(activations, labels, random_reverse=True):
     sample_direction = []
     for i ,(activation, label) in enumerate(zip(activations, labels)):
         direction = activation[np.array(label) == 1].mean(axis=0) - activation[np.array(label) == 0].mean(axis=0)
-        sample_direction.append(-1 ** i * direction)
+        if random_reverse:
+            sample_direction.append(-1 ** i * direction)
+        else:
+            sample_direction.append(direction)
     
     sample_direction = np.vstack(sample_direction)
     return sample_direction
@@ -910,7 +1147,7 @@ def get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, sepa
             usable_head_wise_activations = [separated_head_wise_activations[i][:,layer,head,:] for i in usable_idxs]
             usable_labels = [separated_labels[i] for i in usable_idxs]
             # 生成所有方向，有正有负增加多样性，放到一个 array 中
-            usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels)
+            usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels, random_reverse=True)
             # pca 生成第一主成分
             pca_model = PCA(n_components=n_components, whiten=False).fit(usable_head_wise_directions)
 
@@ -928,3 +1165,23 @@ def get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, sepa
     pca_directions = np.array(pca_directions)
 
     return pca_directions
+
+
+def get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=3): 
+
+    com_directions = []
+
+    for layer in tqdm(range(num_layers), desc=f'gen cluster-{n_clusters} mean directions:'): 
+        for head in range(num_heads): 
+            usable_idxs = np.concatenate([train_set_idxs, val_set_idxs], axis=0)
+            usable_head_wise_activations = [separated_head_wise_activations[i][:,layer,head,:] for i in usable_idxs]
+            usable_labels = [separated_labels[i] for i in usable_idxs]
+            usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels, random_reverse=False)
+            kmeans = KMeans(n_clusters=n_clusters, n_init='auto', random_state=42).fit(usable_head_wise_directions)
+            cluster_centers = kmeans.cluster_centers_
+            com_directions.append(cluster_centers)
+
+
+    com_directions = np.array(com_directions)
+
+    return com_directions
