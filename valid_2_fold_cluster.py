@@ -63,7 +63,7 @@ def main():
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
     parser.add_argument('--pure', action='store_true', default=False)
     parser.add_argument('--use_center_of_mass', action='store_true', help='use center of mass direction', default=True)
-    parser.add_argument('--direction_type', type=str, default='cluster_mean')
+    parser.add_argument('--direction_type', type=str, default='sample_mean')
     parser.add_argument('--use_random_dir', action='store_true', help='use random direction', default=False)
     parser.add_argument('--device', type=int, default=3, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
@@ -88,7 +88,7 @@ def main():
         experiment_name += f'_{args.direction_type}_alpha{int(args.alpha)}'
         if args.direction_type == 'pca':
             experiment_name += f'_n{args.n_components}'
-    os.makedirs(f'/data/jxf/honest_llm/validation/{experiment_name}_cluster',exist_ok=True)
+    os.makedirs(f'/data/jxf/honest_llm/validation/{experiment_name}',exist_ok=True)
     # log_path = f'logs/valid_{experiment_name}.log'
     # file_handler = logging.FileHandler(log_path)
     # logger.addHandler(file_handler)
@@ -178,6 +178,8 @@ def main():
                 com_directions = (mean_direction + pca_directions) / 2
             elif args.direction_type == 'cluster_mean':
                 com_directions = get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters)
+            elif args.direction_type == 'sample_mean':
+                com_directions = np.zeros((len(separated_head_wise_activations[0][0]) * len(separated_head_wise_activations[0][0][0]), len(separated_head_wise_activations[0][0][0][0])))
         else:
             com_directions = None
         top_heads, probes = get_top_heads_and_save_accs(args, experiments_path, i, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, args.use_random_dir)
@@ -185,7 +187,6 @@ def main():
         print("Heads intervened: ", sorted(top_heads))
 
         if 'cluster' in args.direction_type:
-        # if False:
             interventions = get_cluster_interventions_dict(top_heads, probes, head_wise_activations, num_heads, args.use_center_of_mass, args.use_random_dir, com_directions)
             
             def lt_modulated_cluster_add(head_output, layer_name, sample_direction, start_edit_location='lt'): 
@@ -197,6 +198,8 @@ def main():
                     distances = torch.cdist(sample_head_direction.reshape(1, -1).float(), direction_to_add.float())
                     weights = F.softmax((-distances).clone().detach(), dim=1)
                     weighted_direction = torch.matmul(weights, direction_to_add.float())
+                    # weighted_direction += direction_to_add.mean(dim=0, keepdim=True)
+                    # weighted_direction /= 2
                     if start_edit_location == 'lt': 
                         head_output[:, -1, head, :] += args.alpha * weighted_direction
                     else: 
@@ -204,9 +207,24 @@ def main():
                 head_output = rearrange(head_output, 'b s h d -> b s (h d)')
                 return head_output
 
-
             lt_modulated_fn = lt_modulated_cluster_add
 
+        elif 'sample' in args.direction_type:
+            interventions = get_interventions_dict(top_heads, probes, head_wise_activations, num_heads, args.use_center_of_mass, args.use_random_dir, com_directions)
+            def lt_modulated_sample_add(head_output, layer_name, sample_direction, start_edit_location='lt'): 
+                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
+                layer = int(re.search(r'\d+', layer_name).group())
+                for head, direction, proj_val_std in interventions[layer_name]:
+                    sample_head_direction = sample_direction[layer, head]
+                    direction_to_add = torch.tensor(sample_head_direction).to(args.device)
+                    if start_edit_location == 'lt': 
+                        head_output[:, -1, head, :] += direction_to_add
+                    else: 
+                        head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add
+                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
+                return head_output
+
+            lt_modulated_fn = lt_modulated_sample_add
         else:
             interventions = get_interventions_dict(top_heads, probes, head_wise_activations, num_heads, args.use_center_of_mass, args.use_random_dir, com_directions)
 
