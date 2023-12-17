@@ -1131,6 +1131,8 @@ def get_sign(activations, labels, component):
     pca_outputs_min = np.mean([np.array(o)[np.array(labels[i]) == 1].mean() < np.array(o)[np.array(labels[i]) == 0].mean() for i, o in enumerate(pca_outputs_comp)])
     pca_outputs_max = np.mean([np.array(o)[np.array(labels[i]) == 1].mean() > np.array(o)[np.array(labels[i]) == 0].mean() for i, o in enumerate(pca_outputs_comp)])
 
+    acc = max(pca_outputs_min, pca_outputs_max)
+
     sign = np.sign(pca_outputs_max - pca_outputs_min)
     if sign == 0:
         sign = 1
@@ -1180,7 +1182,6 @@ def get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_i
             kmeans = KMeans(n_clusters=n_clusters, n_init='auto', random_state=42).fit(usable_head_wise_directions)
             cluster_centers = kmeans.cluster_centers_
             com_directions.append(cluster_centers)
-
 
     com_directions = np.array(com_directions)
 
