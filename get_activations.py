@@ -55,7 +55,7 @@ def main():
     print("Tokenizing prompts")
     if args.dataset_name == "tqa_gen" or args.dataset_name == "tqa_gen_end_q": 
         prompts, labels, categories = formatter(dataset, tokenizer)
-        with open(f'/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_categories.pkl', 'wb') as f:
+        with open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_categories.pkl', 'wb') as f:
             pickle.dump(categories, f)
     else: 
         prompts, labels = formatter(dataset, tokenizer)
@@ -72,13 +72,13 @@ def main():
         all_head_wise_activations.append(head_wise_activations[:,-1,:])
 
     print("Saving labels")
-    np.save(f'/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_labels.npy', labels)
+    np.save(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_labels.npy', labels)
 
     print("Saving layer wise activations")
-    np.save(f'/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_layer_wise.npy', all_layer_wise_activations)
+    np.save(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_layer_wise.npy', all_layer_wise_activations)
     
     print("Saving head wise activations")
-    np.save(f'/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_head_wise.npy', all_head_wise_activations)
+    np.save(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_head_wise.npy', all_head_wise_activations)
 
 if __name__ == '__main__':
     main()
