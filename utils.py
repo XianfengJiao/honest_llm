@@ -817,10 +817,6 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
     Outputs a pd dataframe with summary values
     """
 
-    if use_cluster:
-        tqa_run_answers = tqa_run_answers_cluster
-        tqa_run_probs = tqa_run_probs_cluster
-
     questions = utilities.load_questions(filename=input_path)
 
     print("ASSUMES OPENAI_API_KEY ENVIRONMENT VARIABLE IS SET")
@@ -860,13 +856,21 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
             llama_tokenizer = llama.LLaMATokenizer.from_pretrained(ENGINE_MAP[mdl])
             
             # ---new add by wtl---
-            questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
+            if use_cluster:
+                questions = tqa_run_answers_cluster(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
+                                device=device, cache_dir=cache_dir, verbose=verbose,
+                                interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
+            else:
+                questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
                                 device=device, cache_dir=cache_dir, verbose=verbose,
                                 interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
             # ---new add by wtl---                   
 
             if 'mc' in metric_names:
-                questions = tqa_run_probs(questions, ENGINE_MAP[mdl], mdl, model=llama_model, tokenizer=llama_tokenizer, preset=preset, device=device, cache_dir=cache_dir, verbose=False, interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
+                if use_cluster:
+                    questions = tqa_run_probs_cluster(questions, ENGINE_MAP[mdl], mdl, model=llama_model, tokenizer=llama_tokenizer, preset=preset, device=device, cache_dir=cache_dir, verbose=False, interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
+                else:
+                    questions = tqa_run_probs(questions, ENGINE_MAP[mdl], mdl, model=llama_model, tokenizer=llama_tokenizer, preset=preset, device=device, cache_dir=cache_dir, verbose=False, interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
                 utilities.save_questions(questions, output_path)
         
         # gpt-neo
@@ -947,16 +951,16 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
     results['CE Loss'] = np.nan
     results['KL wrt Orig'] = np.nan
 
-    # for model_key in models.keys(): 
-        # if model_key not in questions.columns:
-        #     warnings.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
-        #     continue
-        # if 'llama' in model_key or 'alpaca' in model_key or 'vicuna' in model_key:
-        #     ce_loss = run_ce_loss(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn)
-        #     kl_wrt_orig = run_kl_wrt_orig(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn, separate_kl_device=separate_kl_device)
+    for model_key in models.keys(): 
+        if model_key not in questions.columns:
+            warnings.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
+            continue
+        if 'llama' in model_key or 'alpaca' in model_key or 'vicuna' in model_key:
+            ce_loss = run_ce_loss(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn)
+            kl_wrt_orig = run_kl_wrt_orig(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn, separate_kl_device=separate_kl_device)
 
-        # results.loc[model_key, 'CE Loss'] = ce_loss
-        # results.loc[model_key, 'KL wrt Orig'] = kl_wrt_orig
+        results.loc[model_key, 'CE Loss'] = ce_loss
+        results.loc[model_key, 'KL wrt Orig'] = kl_wrt_orig
 
     # save results
     results.to_csv(summary_path, index=False)
@@ -1125,48 +1129,53 @@ def gen_sample_directions(activations, labels, random_reverse=True):
     return sample_direction
 
 def get_sign(activations, labels, component):
-    activations = np.concatenate(activations)
-    transformed_activations = project_onto_direction(activations, component).cpu().numpy()
+    activations = np.concatenate(activations) # (question_nums* answer_nums, 128)
+    transformed_activations = project_onto_direction(activations, component).cpu().numpy() # (question_nums* answer_nums,)
     pca_outputs_comp = [list(islice(transformed_activations, sum(len(c) for c in labels[:i]), sum(len(c) for c in labels[:i+1]))) for i in range(len(labels))]
-    pca_outputs_min = np.mean([np.array(o)[np.array(labels[i]) == 1].mean() < np.array(o)[np.array(labels[i]) == 0].mean() for i, o in enumerate(pca_outputs_comp)])
+    # pca_outputs_min = np.mean([np.array(o)[np.array(labels[i]) == 1].mean() < np.array(o)[np.array(labels[i]) == 0].mean() for i, o in enumerate(pca_outputs_comp)])
     pca_outputs_max = np.mean([np.array(o)[np.array(labels[i]) == 1].mean() > np.array(o)[np.array(labels[i]) == 0].mean() for i, o in enumerate(pca_outputs_comp)])
+    
+    acc = max(pca_outputs_max, 1 - pca_outputs_max)
 
-    acc = max(pca_outputs_min, pca_outputs_max)
-
-    sign = np.sign(pca_outputs_max - pca_outputs_min)
+    sign = np.sign(pca_outputs_max - 0.5)
     if sign == 0:
         sign = 1
     
-    return sign
+    return acc, sign
 
-def get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_components=1): 
+def get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_components=1, random_reverse=True): 
 
     pca_directions = []
+    pca_accs = []
 
-    for layer in tqdm(range(num_layers), desc='gen pca directions:'): 
+    for layer in tqdm(range(num_layers), desc='gen pca directions'): 
         for head in range(num_heads): 
             usable_idxs = np.concatenate([train_set_idxs, val_set_idxs], axis=0)
-            usable_head_wise_activations = [separated_head_wise_activations[i][:,layer,head,:] for i in usable_idxs]
+            usable_head_wise_activations = [separated_head_wise_activations[i][:,layer,head,:] for i in usable_idxs] # (question_nums, answer_nums, 128)
             usable_labels = [separated_labels[i] for i in usable_idxs]
-            # 生成所有方向，有正有负增加多样性，放到一个 array 中
-            usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels, random_reverse=True)
+            # 生成所有方向，有正有负增加多样性，放到一个 array 中(每个问题算一个方向)
+            usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels, random_reverse=True) # 
             # pca 生成第一主成分
             pca_model = PCA(n_components=n_components, whiten=False).fit(usable_head_wise_directions)
 
             pca_component = np.zeros(pca_model.components_[0].shape)
+            pca_acc = 0
             for i in range(n_components):
                 component = pca_model.components_[i]
                 # 确定每个主成分的方向
-                sign = get_sign(usable_head_wise_activations, usable_labels, component)
+                acc, sign = get_sign(usable_head_wise_activations, usable_labels, component)
 
                 pca_component += component * sign * np.exp(-i)
+                pca_acc += acc * np.exp(-i)
 
             pca_directions.append(pca_component)
+            pca_accs.append(pca_acc)
 
-    # 返回方向
+    # 返回方向和准确率
     pca_directions = np.array(pca_directions)
+    pca_accs = np.array(pca_accs)
 
-    return pca_directions
+    return pca_directions, pca_accs
 
 
 def get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=3): 

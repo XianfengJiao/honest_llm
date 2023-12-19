@@ -75,7 +75,6 @@ def main():
     parser.add_argument('--cur_rate', type=float, default='1')
     args = parser.parse_args()
 
-    # Add file logging besides stdout
     if args.pure:
         experiment_name = f'{args.model_name}_pure'
     elif args.collect == 'all':
@@ -88,12 +87,8 @@ def main():
         experiment_name += f'_{args.direction_type}_alpha{int(args.alpha)}'
         if args.direction_type == 'pca':
             experiment_name += f'_n{args.n_components}'
-    os.makedirs(f'/data/jxf/honest_llm/validation/{experiment_name}',exist_ok=True)
-    # log_path = f'logs/valid_{experiment_name}.log'
-    # file_handler = logging.FileHandler(log_path)
-    # logger.addHandler(file_handler)
+    os.makedirs(f'/data/wtl/honest_llm/validation/{experiment_name}',exist_ok=True)
 
-    # logger.info('Running:\n{}\n'.format(' '.join(sys.argv))) # command
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     # set seeds
     torch.manual_seed(args.seed)
@@ -148,7 +143,7 @@ def main():
 
     # run k-fold cross validation
     results = []
-    experiments_path = f'/data/jxf/honest_llm/validation/{experiment_name}'
+    experiments_path = f'/data/wtl/honest_llm/validation/{experiment_name}'
     print(f'experiments_path: {experiments_path}')
     for i in range(args.num_fold):
 

@@ -46,6 +46,19 @@ def get_top_heads_and_save_accs(args, experiments_path, fold, train_idxs, val_id
     return top_heads, probes
 
 
+def get_top_heads_by_pca_and_save_accs(experiments_path, fold, num_layers, num_heads, all_head_accs_np, num_to_intervene):
+    save_path = f'{experiments_path}/fold_{fold}_pca_head_accs.npy'
+    all_head_accs_np = all_head_accs_np.reshape(num_layers, num_heads)
+    np.save(save_path, all_head_accs_np)
+    top_heads = []
+
+    top_accs = np.argsort(all_head_accs_np.reshape(num_heads*num_layers))[::-1][:num_to_intervene] # 排序后反转取索引
+    top_heads = [flattened_idx_to_layer_head(idx, num_heads) for idx in top_accs]  # 准确率最高的层和head的索引
+
+    return top_heads
+    
+
+
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
@@ -60,8 +73,9 @@ def main():
     parser.add_argument('--pure', action='store_true', default=False)
     parser.add_argument('--use_center_of_mass', action='store_true', help='use center of mass direction', default=True)
     parser.add_argument('--direction_type', type=str, default='pca')
+    parser.add_argument('--choose_heads_by_pca', action='store_true', default=False)
     parser.add_argument('--use_random_dir', action='store_true', help='use random direction', default=False)
-    parser.add_argument('--device', type=int, default=3, help='device')
+    parser.add_argument('--device', type=int, default=1, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--judge_name', type=str, required=False)
     parser.add_argument('--info_name', type=str, required=False)
@@ -71,7 +85,6 @@ def main():
     parser.add_argument('--cur_rate', type=float, default='1')
     args = parser.parse_args()
 
-    # Add file logging besides stdout
     if args.pure:
         experiment_name = f'{args.model_name}_pure'
     elif args.collect == 'all':
@@ -84,13 +97,11 @@ def main():
         experiment_name += f'_{args.direction_type}_alpha{int(args.alpha)}'
         if args.direction_type == 'pca':
             experiment_name += f'_n{args.n_components}'
-    os.makedirs(f'/data/jxf/honest_llm/validation/{experiment_name}',exist_ok=True)
-    # log_path = f'logs/valid_{experiment_name}.log'
-    # file_handler = logging.FileHandler(log_path)
-    # logger.addHandler(file_handler)
+            if args.choose_heads_by_pca:
+                experiment_name += '_choose_by_pca'
 
-    # logger.info('Running:\n{}\n'.format(' '.join(sys.argv))) # command
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
+    print(args)
     # set seeds
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -139,13 +150,15 @@ def main():
     elif args.collect == 'stimulus':
         head_wise_activations = [activations[:, args.stimulus_pos, :] for activations in head_wise_activations]
     head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
-
+    # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
     separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
+
+    experiments_path = f'/data/wtl/honest_llm/validation/{experiment_name}'
+    os.makedirs(experiments_path, exist_ok=True)
+    print(f'experiments_path: {experiments_path}')
 
     # run k-fold cross validation
     results = []
-    experiments_path = f'/data/jxf/honest_llm/validation/{experiment_name}'
-    print(f'experiments_path: {experiments_path}')
     for i in range(args.num_fold):
 
         train_idxs = np.concatenate([fold_idxs[j] for j in range(args.num_fold) if j != i])
@@ -167,14 +180,21 @@ def main():
             if args.direction_type == 'mean':
                 com_directions = get_com_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels)
             elif args.direction_type == 'pca':
-                com_directions = get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_components=args.n_components)
+                com_directions, pca_accs = get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_components=args.n_components)
+                print('top pca accs: ', sorted(pca_accs, reverse=True)[:5])
+                print('bottom pca accs: ', sorted(pca_accs)[:5])
             elif args.direction_type == 'pca_mean':
                 mean_direction = get_com_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels)
-                pca_directions = get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_components=args.n_components)
+                pca_directions, pca_accs = get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_components=args.n_components)
                 com_directions = (mean_direction + pca_directions) / 2
         else:
             com_directions = None
-        top_heads, probes = get_top_heads_and_save_accs(args, experiments_path, i, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, args.use_random_dir)
+
+        if args.choose_heads_by_pca:
+            top_heads = get_top_heads_by_pca_and_save_accs(experiments_path, i, num_layers, num_heads, pca_accs, args.num_heads)
+            probes = None
+        else:
+            top_heads, probes = get_top_heads_and_save_accs(args, experiments_path, i, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, args.use_random_dir)
 
         print("Heads intervened: ", sorted(top_heads))
     
