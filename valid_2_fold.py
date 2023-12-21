@@ -1,3 +1,4 @@
+import random
 import torch
 import torch.nn.functional as F
 from einops import rearrange
@@ -21,18 +22,11 @@ HF_NAMES = {
     'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
 }
 
-def get_top_heads_and_save_accs(args, experiments_path, fold, train_idxs, val_idxs, separated_activations, separated_labels, num_layers, num_heads, seed, num_to_intervene, use_random_dir=False):
+def get_top_heads_and_save_accs(experiments_path, fold, train_idxs, val_idxs, separated_activations, separated_labels, num_layers, num_heads, seed, num_to_intervene, use_random_dir=False):
 
     probes, all_head_accs_np = train_probes(seed, train_idxs, val_idxs, separated_activations, separated_labels, num_layers=num_layers, num_heads=num_heads)
     all_head_accs_np = all_head_accs_np.reshape(num_layers, num_heads)
-
-    if args.collect == 'all':
-        save_path = f'{experiments_path}/fold_{fold}_{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(int(args.cur_rate * 100)).zfill(3)}_head_accs.npy'
-    elif args.collect == 'stimulus':
-        save_path = f'{experiments_path}/fold_{fold}_{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(args.stimulus_pos)}_head_accs.npy'
-    else:
-        save_path = f'{experiments_path}/fold_{fold}_{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_accs.npy'
-
+    save_path = f'{experiments_path}/fold_{fold}_pca_head_accs.npy'
     np.save(save_path, all_head_accs_np)
     top_heads = []
 
@@ -71,11 +65,10 @@ def main():
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
     parser.add_argument('--pure', action='store_true', default=False)
-    parser.add_argument('--use_center_of_mass', action='store_true', help='use center of mass direction', default=True)
+    parser.add_argument('--use_center_of_mass', action='store_true', help='use center of mass direction', default=False)
     parser.add_argument('--direction_type', type=str, default='pca')
-    parser.add_argument('--choose_heads_by_pca', action='store_true', default=False)
     parser.add_argument('--use_random_dir', action='store_true', help='use random direction', default=False)
-    parser.add_argument('--device', type=int, default=1, help='device')
+    parser.add_argument('--device', type=int, default=0, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--judge_name', type=str, required=False)
     parser.add_argument('--info_name', type=str, required=False)
@@ -83,12 +76,19 @@ def main():
     parser.add_argument('--cut_type', type=str, default='')
     parser.add_argument('--stimulus_pos', type=int, default='6')
     parser.add_argument('--cur_rate', type=float, default='1')
+    parser.add_argument('--cut_random', action='store_true', help='Randomly truncate at answer position', default=False)
+    parser.add_argument('--random_lower_bound', type=float, default='0.5')
+    parser.add_argument('--choose_heads_by_pca', action='store_true', default=False)
+
     args = parser.parse_args()
 
     if args.pure:
         experiment_name = f'{args.model_name}_pure'
     elif args.collect == 'all':
-        experiment_name = f'{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(int(args.cur_rate * 100)).zfill(3)}'
+        if args.cut_random:
+            experiment_name = f'{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_random_lower_bound{str(int(args.random_lower_bound * 100)).zfill(3)}'
+        else:
+            experiment_name = f'{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(int(args.cur_rate * 100)).zfill(3)}'
     elif args.collect == 'stimulus':
         experiment_name = f'{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(args.stimulus_pos)}'
     else:
@@ -146,7 +146,10 @@ def main():
     
     if args.collect == 'all':
         ans_start_pos, ans_len = find_ans_positions(tokens)
-        head_wise_activations = [activations[:, pos + int(l * args.cur_rate) - 1,:] for activations, pos, l in zip(head_wise_activations, ans_start_pos, ans_len)]
+        if args.cut_random:
+            head_wise_activations = [activations[:, pos + int(l * random.uniform(0.6, 1)) - 1,:] for activations, pos, l in zip(head_wise_activations, ans_start_pos, ans_len)]    
+        else:
+            head_wise_activations = [activations[:, pos + int(l * args.cur_rate) - 1,:] for activations, pos, l in zip(head_wise_activations, ans_start_pos, ans_len)]
     elif args.collect == 'stimulus':
         head_wise_activations = [activations[:, args.stimulus_pos, :] for activations in head_wise_activations]
     head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
@@ -178,12 +181,15 @@ def main():
         # get directions
         if args.use_center_of_mass:
             if args.direction_type == 'mean':
+                print('use mean direction')
                 com_directions = get_com_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels)
             elif args.direction_type == 'pca':
+                print('use pca direction') 
                 com_directions, pca_accs = get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_components=args.n_components)
                 print('top pca accs: ', sorted(pca_accs, reverse=True)[:5])
                 print('bottom pca accs: ', sorted(pca_accs)[:5])
             elif args.direction_type == 'pca_mean':
+                print('use pca_mean direction')
                 mean_direction = get_com_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels)
                 pca_directions, pca_accs = get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_components=args.n_components)
                 com_directions = (mean_direction + pca_directions) / 2
@@ -194,7 +200,7 @@ def main():
             top_heads = get_top_heads_by_pca_and_save_accs(experiments_path, i, num_layers, num_heads, pca_accs, args.num_heads)
             probes = None
         else:
-            top_heads, probes = get_top_heads_and_save_accs(args, experiments_path, i, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, args.use_random_dir)
+            top_heads, probes = get_top_heads_and_save_accs(experiments_path, i, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, args.use_random_dir)
 
         print("Heads intervened: ", sorted(top_heads))
     
