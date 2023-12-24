@@ -308,11 +308,11 @@ def load_probes(path):
 
 # -- TruthfulQA helper functions -- # 
 
-def tqa_run_answers_cluster(frame, engine, tag, preset, model=None, tokenizer=None, verbose=True, device=None, cache_dir=None, interventions={}, intervention_fn=None, instruction_prompt=True, many_shot_prefix=None):
+def tqa_run_answers_cluster(frame, engine, tag, preset, model=None, tokenizer=None, verbose=True, device=None, cache_dir=None, interventions={}, intervention_fn=None, instruction_prompt=True, many_shot_prefix=None, sample_directions=None):
 
     """Stores answers from autoregressive HF models (GPT-2, GPT-Neo)"""
     
-    frame['Direction'] = frame['Direction'].map(lambda x: json.loads(x) if isinstance(x, str) else x)
+    # frame['Direction'] = frame['Direction'].map(lambda x: json.loads(x) if isinstance(x, str) else x)
     if tag not in frame.columns:
         frame[tag] = ''
 
@@ -335,7 +335,6 @@ def tqa_run_answers_cluster(frame, engine, tag, preset, model=None, tokenizer=No
             prompt = prefix + prompt            
             input_ids = tokenizer(prompt, return_tensors='pt').input_ids
             tokens.append(input_ids)
-            directions.append(np.array(frame.loc[idx, 'Direction']))
             
     # --- intervention code --- #
     def id(head_output, layer_name): 
@@ -353,7 +352,7 @@ def tqa_run_answers_cluster(frame, engine, tag, preset, model=None, tokenizer=No
     with torch.no_grad():
         for idx, input_ids in enumerate(tqdm(tokens)):
             max_len = input_ids.shape[-1] + 50
-            direction = torch.FloatTensor(directions[idx]).to(device)
+            direction = torch.FloatTensor(sample_directions[idx]).to(device)
             intervene = lambda head_output, layer_name: intervention_fn(head_output, layer_name, direction)
 
             # --- interventioncode --- #
@@ -386,11 +385,11 @@ def tqa_run_answers_cluster(frame, engine, tag, preset, model=None, tokenizer=No
 
     return frame
 
-def tqa_run_probs_cluster(frame, engine, tag, preset, model=None, tokenizer=None, verbose=True, device=None, cache_dir=None, interventions={}, intervention_fn=None, instruction_prompt=True, many_shot_prefix=None):
+def tqa_run_probs_cluster(frame, engine, tag, preset, model=None, tokenizer=None, verbose=True, device=None, cache_dir=None, interventions={}, intervention_fn=None, instruction_prompt=True, many_shot_prefix=None, sample_directions=None):
 
     """Runs multiple-choice metrics for autoregressive HuggingFace models (GPT-2, GPT-Neo)"""
 
-    frame['Direction'] = frame['Direction'].map(lambda x: json.loads(x) if isinstance(x, str) else x)
+    # frame['Direction'] = frame['Direction'].map(lambda x: json.loads(x) if isinstance(x, str) else x)
     set_columns(tag, frame)
 
     if model is None:
@@ -402,7 +401,7 @@ def tqa_run_probs_cluster(frame, engine, tag, preset, model=None, tokenizer=None
     with torch.no_grad():
         for idx in tqdm(frame.index):
             if pd.isnull(frame.loc[idx, '{0} lprob max'.format(tag)]):
-                direction = torch.FloatTensor(frame.loc[idx, 'Direction']).to(device)
+                direction = torch.FloatTensor(sample_directions[idx]).to(device)
                 # check that answer exists
                 if pd.isnull(frame.loc[idx, INCORRECT_COL]):
                     warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
@@ -803,7 +802,7 @@ def run_kl_wrt_orig(model_key, model=None, tokenizer=None, device='cuda', interv
 
     return np.mean(kl_divs)
 
-def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path, device='cpu', verbose=False, preset='qa', interventions={}, intervention_fn=None, cache_dir=None, separate_kl_device=None, instruction_prompt=True, many_shot_prefix=None, judge_name=None, info_name=None, use_cluster=False): 
+def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path, device='cpu', verbose=False, preset='qa', interventions={}, intervention_fn=None, cache_dir=None, separate_kl_device=None, instruction_prompt=True, many_shot_prefix=None, judge_name=None, info_name=None, use_cluster=False, sample_directions=None): 
     """
     Inputs:
     models: a dictionary of the form {model_name: model} where model is a HF transformer # TODO: doesn't work with models other than llama right now
@@ -859,7 +858,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
             if use_cluster:
                 questions = tqa_run_answers_cluster(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
                                 device=device, cache_dir=cache_dir, verbose=verbose,
-                                interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
+                                interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix, sample_directions=sample_directions)
             else:
                 questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
                                 device=device, cache_dir=cache_dir, verbose=verbose,
@@ -868,7 +867,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
 
             if 'mc' in metric_names:
                 if use_cluster:
-                    questions = tqa_run_probs_cluster(questions, ENGINE_MAP[mdl], mdl, model=llama_model, tokenizer=llama_tokenizer, preset=preset, device=device, cache_dir=cache_dir, verbose=False, interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
+                    questions = tqa_run_probs_cluster(questions, ENGINE_MAP[mdl], mdl, model=llama_model, tokenizer=llama_tokenizer, preset=preset, device=device, cache_dir=cache_dir, verbose=False, interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix, sample_directions=sample_directions)
                 else:
                     questions = tqa_run_probs(questions, ENGINE_MAP[mdl], mdl, model=llama_model, tokenizer=llama_tokenizer, preset=preset, device=device, cache_dir=cache_dir, verbose=False, interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
                 utilities.save_questions(questions, output_path)
@@ -956,11 +955,12 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
             warnings.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
             continue
         if 'llama' in model_key or 'alpaca' in model_key or 'vicuna' in model_key:
-            ce_loss = run_ce_loss(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn)
-            kl_wrt_orig = run_kl_wrt_orig(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn, separate_kl_device=separate_kl_device)
+            if not use_cluster:
+                ce_loss = run_ce_loss(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn)
+                kl_wrt_orig = run_kl_wrt_orig(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn, separate_kl_device=separate_kl_device)
 
-        results.loc[model_key, 'CE Loss'] = ce_loss
-        results.loc[model_key, 'KL wrt Orig'] = kl_wrt_orig
+                results.loc[model_key, 'CE Loss'] = ce_loss
+                results.loc[model_key, 'KL wrt Orig'] = kl_wrt_orig
 
     # save results
     results.to_csv(summary_path, index=False)
@@ -1188,7 +1188,7 @@ def get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_i
             usable_head_wise_activations = [separated_head_wise_activations[i][:,layer,head,:] for i in usable_idxs]
             usable_labels = [separated_labels[i] for i in usable_idxs]
             usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels, random_reverse=False)
-            kmeans = KMeans(n_clusters=n_clusters, n_init='auto', random_state=42).fit(usable_head_wise_directions)
+            kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42).fit(usable_head_wise_directions)
             cluster_centers = kmeans.cluster_centers_
             com_directions.append(cluster_centers)
 

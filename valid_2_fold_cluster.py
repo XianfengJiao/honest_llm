@@ -63,7 +63,7 @@ def main():
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
     parser.add_argument('--pure', action='store_true', default=False)
     parser.add_argument('--use_center_of_mass', action='store_true', help='use center of mass direction', default=True)
-    parser.add_argument('--direction_type', type=str, default='sample_mean')
+    parser.add_argument('--direction_type', type=str, default='cluster_mean')
     parser.add_argument('--use_random_dir', action='store_true', help='use random direction', default=False)
     parser.add_argument('--device', type=int, default=3, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
@@ -236,8 +236,6 @@ def main():
             
             lt_modulated_fn = lt_modulated_vector_add
         
-
-
         filename = f'{args.model_name}_seed_{args.seed}_top_{args.num_heads}_heads_alpha_{int(args.alpha)}_fold_{i}'
 
         if args.use_random_dir:
