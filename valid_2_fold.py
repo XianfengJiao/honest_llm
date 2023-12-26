@@ -246,7 +246,7 @@ def main():
     results = np.array(results)
     final = results.mean(axis=0)
 
-    # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
+    print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]:.4f}, KL wrt Original: {final[6]:.4f}')
 
 if __name__ == "__main__":
     main()

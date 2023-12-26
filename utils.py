@@ -452,9 +452,8 @@ def tqa_run_probs_cluster(frame, engine, tag, preset, model=None, tokenizer=None
                     if interventions == {}: 
                         intervene = id
                     else: 
-                        intervene = partial(intervention_fn, start_edit_location=start_edit_location)
-                        intervene = lambda head_output, layer_name: intervention_fn(head_output, layer_name, direction)
-                    
+                        # intervene = partial(intervention_fn, start_edit_location=start_edit_location)
+                        intervene = lambda head_output, layer_name: intervention_fn(head_output, layer_name, direction, start_edit_location)
                     with TraceDict(model, layers_to_intervene, edit_output=intervene) as ret: 
                         outputs = model(prompt_ids)[0].squeeze(0)
                     
@@ -488,8 +487,8 @@ def tqa_run_probs_cluster(frame, engine, tag, preset, model=None, tokenizer=None
                     if interventions == {}:
                         intervene = id
                     else:
-                        intervene = partial(intervention_fn, start_edit_location=start_edit_location)
-                        intervene = lambda head_output, layer_name: intervention_fn(head_output, layer_name, direction)
+                        # intervene = partial(intervention_fn, start_edit_location=start_edit_location)
+                        intervene = lambda head_output, layer_name: intervention_fn(head_output, layer_name, direction, start_edit_location)
 
                     with TraceDict(model, layers_to_intervene, edit_output=intervene) as ret: 
                         outputs = model(prompt_ids)[0].squeeze(0)
@@ -1025,15 +1024,13 @@ def get_cluster_interventions_dict(top_heads, probes, tuning_activations, num_he
             direction = np.random.normal(size=(128,))
         else: 
             direction = probes[layer_head_to_flattened_idx(layer, head, num_heads)].coef_
-        if len(direction.shape) > 1:
-            direction = direction / np.linalg.norm(direction, axis=1).reshape(-1, 1)
-        else:
-            direction = direction / np.linalg.norm(direction)
+        
+        # direction = direction / np.linalg.norm(direction, axis=-1).reshape(-1, 1)
 
         activations = tuning_activations[:,layer,head,:] # batch x 128
         proj_vals = activations @ direction.T
         proj_val_std = np.std(proj_vals, axis=0)
-        interventions[f"model.layers.{layer}.self_attn.head_out"].append((head, direction.squeeze(), proj_val_std))
+        interventions[f"model.layers.{layer}.self_attn.head_out"].append((head, direction, proj_val_std))
     for layer, head in top_heads: 
         interventions[f"model.layers.{layer}.self_attn.head_out"] = sorted(interventions[f"model.layers.{layer}.self_attn.head_out"], key = lambda x: x[0])
 
@@ -1178,16 +1175,18 @@ def get_pca_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, sepa
     return pca_directions, pca_accs
 
 
-def get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=3): 
+def get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=3, directions=None): 
 
     com_directions = []
 
     for layer in tqdm(range(num_layers), desc=f'gen cluster-{n_clusters} mean directions:'): 
         for head in range(num_heads): 
             usable_idxs = np.concatenate([train_set_idxs, val_set_idxs], axis=0)
-            usable_head_wise_activations = [separated_head_wise_activations[i][:,layer,head,:] for i in usable_idxs]
-            usable_labels = [separated_labels[i] for i in usable_idxs]
-            usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels, random_reverse=False)
+            # usable_head_wise_activations = [separated_head_wise_activations[i][:,layer,head,:] for i in usable_idxs]
+            # usable_labels = [separated_labels[i] for i in usable_idxs]
+            # usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels, random_reverse=False)
+
+            usable_head_wise_directions = directions[usable_idxs, layer, head, :]
             kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42).fit(usable_head_wise_directions)
             cluster_centers = kmeans.cluster_centers_
             com_directions.append(cluster_centers)

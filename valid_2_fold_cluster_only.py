@@ -31,7 +31,7 @@ def main():
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
-    parser.add_argument('--device', type=int, default=0, help='device')
+    parser.add_argument('--device', type=int, default=1, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=4)
     parser.add_argument('--judge_name', type=str, required=False)
@@ -54,11 +54,20 @@ def main():
     # load dataframe and activations direcitons
     df = pd.read_csv('./TruthfulQA/data/v0/TruthfulQA.csv')
     head_wise_activation_directions = np.load('/data/wtl/honest_llm/directions/head_wise_activation_directions.npy')
+    # norms = np.linalg.norm(head_wise_activation_directions, axis=-1, keepdims=True)
+    # # 避免除以零的情况
+    # norms[norms == 0] = np.inf  # 将为0范数设置为无穷大，这样除以无穷大会得到0
+    # head_wise_activation_directions = head_wise_activation_directions / norms
+
 
     # order csv by huggingface order, the order used to save activations
     dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
     golden_q_order = list(dataset["question"])
     df = df.sort_values(by='Question', key=lambda x: x.map({k: i for i, k in enumerate(golden_q_order)}))
+
+    dictionary = {k: i for i, k in enumerate(golden_q_order)}
+    for q in df['Question']:
+        assert q in dictionary
     
     # get two folds using numpy
     fold_idxs = np.array_split(np.arange(len(df)), args.num_fold)
@@ -101,7 +110,7 @@ def main():
         df.iloc[test_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
         # get direction of cluster center
-        com_directions = get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters)
+        com_directions = get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
         
         top_heads, probes = get_top_heads(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, use_random_dir=False)
         print("Heads intervened: ", sorted(top_heads))
@@ -109,23 +118,29 @@ def main():
         interventions = get_cluster_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=com_directions)
 
         # sample_directions
-        sample_directions = head_wise_activation_directions[test_idxs] 
+        sample_directions = head_wise_activation_directions[test_idxs]
 
         def lt_modulated_cluster_add(head_output, layer_name, sample_direction, start_edit_location='lt'): 
             head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
             layer = int(re.search(r'\d+', layer_name).group())
             for head, direction, proj_val_std in interventions[layer_name]:
                 sample_head_direction = sample_direction[layer, head]
-                direction_to_add = torch.tensor(direction *  proj_val_std.reshape(-1, 1)).to(args.device)
+                direction_to_add = torch.tensor(direction).to(device)
+                
+                # 计算距离
                 distances = torch.cdist(sample_head_direction.reshape(1, -1).float(), direction_to_add.float())
-                weights = F.softmax((-distances).clone().detach(), dim=1)
-                weighted_direction = torch.matmul(weights, direction_to_add.float())
-                # weighted_direction += direction_to_add.mean(dim=0, keepdim=True)
-                # weighted_direction /= 2
+
+                # 找到最小距离的方向
+                min_distance_index = torch.argmin(distances.squeeze(0))
+                closest_direction = direction_to_add[min_distance_index]
+                closest_proj_val_std = proj_val_std[min_distance_index]
+
                 if start_edit_location == 'lt': 
-                    head_output[:, -1, head, :] += args.alpha * weighted_direction
+                    # head_output[:, -1, head, :] += args.alpha * closest_direction * closest_proj_val_std
+                    head_output[:, -1, head, :] += args.alpha * closest_direction
                 else: 
-                    head_output[:, start_edit_location:, head, :] += args.alpha * weighted_direction
+                    # head_output[:, start_edit_location:, head, :] += args.alpha * closest_direction * closest_proj_val_std
+                    head_output[:, start_edit_location:, head, :] += args.alpha * closest_direction 
             head_output = rearrange(head_output, 'b s h d -> b s (h d)')
             return head_output
 
@@ -155,7 +170,7 @@ def main():
     results = np.array(results)
     final = results.mean(axis=0)
 
-    print(f'BLEURT acc: {final[0]}, MC1: {final[1]}, MC2: {final[2]}, bleu acc: {final[3]}, rouge1 acc: {final[4]}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
+    print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
 
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
