@@ -167,6 +167,36 @@ def tokenized_tqa_cut(dataset, tokenizer, pos=None, ref_df=None):
 
     return all_prompts, all_labels, all_categories, all_tokens
 
+def tokenized_tqa_contrast(dataset, tokenizer, pos=None, ref_df=None):
+    (pos_prefix, neg_prefix) = ('Give a truthful answer. ', 'Give an untruthful answer. ')
+    all_prompts = []
+    all_labels = []
+    all_tokens = []
+    all_categories = []
+    for i in range(len(dataset)):
+        question = dataset[i]['question']
+        choices = dataset[i]['mc2_targets']['choices']
+        labels = dataset[i]['mc2_targets']['labels']
+        categorie = ref_df.loc[ref_df['Question'] == question, 'Category'].iloc[0] if ref_df is not None else 'Unknown'
+
+        assert len(choices) == len(labels), (len(choices), len(labels))
+
+        pos_prompt = question + pos_prefix
+        neg_prompt = question + neg_prefix
+
+        pos_prompt = tokenizer(pos_prompt, return_tensors = 'pt').input_ids
+        neg_prompt = tokenizer(neg_prompt, return_tensors = 'pt').input_ids
+
+        pos_tokens = tokenizer.convert_ids_to_tokens(pos_prompt[0])
+        neg_tokens = tokenizer.convert_ids_to_tokens(neg_prompt[0])
+
+        all_prompts.append([pos_prompt, neg_prompt])
+        all_tokens.append([pos_tokens, neg_tokens])
+        all_categories.append(categorie)
+        all_labels.append([1, 0])
+    
+    return all_prompts, all_labels, all_categories, all_tokens
+
 
 def tokenized_tqa_all(dataset, tokenizer, ref_df=None): 
 
@@ -284,6 +314,23 @@ def get_llama_activations_bau(model, prompt, device):
         mlp_wise_hidden_states = torch.stack(mlp_wise_hidden_states, dim = 0).squeeze().numpy()
 
     return hidden_states, head_wise_hidden_states, mlp_wise_hidden_states
+
+def get_llama_activations_gen(model, tokenizer, contrast_prompts, device):
+    model.eval()
+
+    HEADS = [f"model.layers.{i}.self_attn.head_out" for i in range(model.config.num_hidden_layers)]
+    with torch.no_grad():
+        [pos_prompt, neg_prompt] = contrast_prompts
+        with TraceDict(model, HEADS) as ret:
+            pos_prompt = pos_prompt.to(device)
+            max_len = pos_prompt.shape[-1] + 50
+            pos_output = model.generate(pos_prompt, top_k=1, max_length=max_len, num_return_sequences=1,)[:, pos_prompt.shape[-1]:]
+            pos_gen_str = tokenizer.decode(pos_output[0], skip_special_tokens=True)
+            pos_gen_str = pos_gen_str.strip()
+
+        pos_hidden_states = pos_output.hidden_states
+
+
 
 
 def get_llama_logits(model, prompt, device): 
@@ -818,8 +865,11 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
     """
 
     if use_cluster:
-        tqa_run_answers = tqa_run_answers_cluster
-        tqa_run_probs = tqa_run_probs_cluster
+        run_answers = tqa_run_answers_cluster
+        run_probs = tqa_run_probs_cluster
+    else:
+        run_answers = tqa_run_answers
+        run_probs = tqa_run_probs
 
     questions = utilities.load_questions(filename=input_path)
 
@@ -860,13 +910,13 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
             llama_tokenizer = llama.LLaMATokenizer.from_pretrained(ENGINE_MAP[mdl])
             
             # ---new add by wtl---
-            questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
+            questions = run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
                                 device=device, cache_dir=cache_dir, verbose=verbose,
                                 interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
             # ---new add by wtl---                   
 
             if 'mc' in metric_names:
-                questions = tqa_run_probs(questions, ENGINE_MAP[mdl], mdl, model=llama_model, tokenizer=llama_tokenizer, preset=preset, device=device, cache_dir=cache_dir, verbose=False, interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
+                questions = run_probs(questions, ENGINE_MAP[mdl], mdl, model=llama_model, tokenizer=llama_tokenizer, preset=preset, device=device, cache_dir=cache_dir, verbose=False, interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)
                 utilities.save_questions(questions, output_path)
         
         # gpt-neo
@@ -947,16 +997,16 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
     results['CE Loss'] = np.nan
     results['KL wrt Orig'] = np.nan
 
-    # for model_key in models.keys(): 
-        # if model_key not in questions.columns:
-        #     warnings.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
-        #     continue
-        # if 'llama' in model_key or 'alpaca' in model_key or 'vicuna' in model_key:
-        #     ce_loss = run_ce_loss(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn)
-        #     kl_wrt_orig = run_kl_wrt_orig(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn, separate_kl_device=separate_kl_device)
+    for model_key in models.keys(): 
+        if model_key not in questions.columns:
+            warnings.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
+            continue
+        if 'llama' in model_key or 'alpaca' in model_key or 'vicuna' in model_key:
+            ce_loss = run_ce_loss(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn)
+            kl_wrt_orig = run_kl_wrt_orig(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn, separate_kl_device=separate_kl_device)
 
-        # results.loc[model_key, 'CE Loss'] = ce_loss
-        # results.loc[model_key, 'KL wrt Orig'] = kl_wrt_orig
+        results.loc[model_key, 'CE Loss'] = ce_loss
+        results.loc[model_key, 'KL wrt Orig'] = kl_wrt_orig
 
     # save results
     results.to_csv(summary_path, index=False)
@@ -1053,6 +1103,30 @@ def get_interventions_dict(top_heads, probes, tuning_activations, num_heads, use
         proj_vals = activations @ direction.T
         proj_val_std = np.std(proj_vals)
         interventions[f"model.layers.{layer}.self_attn.head_out"].append((head, direction.squeeze(), proj_val_std))
+    for layer, head in top_heads: 
+        interventions[f"model.layers.{layer}.self_attn.head_out"] = sorted(interventions[f"model.layers.{layer}.self_attn.head_out"], key = lambda x: x[0])
+
+    return interventions
+
+def get_w_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
+
+    interventions = {}
+    for layer, head in top_heads: 
+        interventions[f"model.layers.{layer}.self_attn.head_out"] = []
+    for layer, head in top_heads:
+        if use_center_of_mass: 
+            direction = com_directions[layer_head_to_flattened_idx(layer, head, num_heads)]
+        elif use_random_dir: 
+            direction = np.random.normal(size=(128,))
+        else: 
+            direction = probes[layer_head_to_flattened_idx(layer, head, num_heads)].coef_
+
+        probe = probes[layer_head_to_flattened_idx(layer, head, num_heads)]
+        direction = direction / np.linalg.norm(direction)
+        activations = tuning_activations[:,layer,head,:] # batch x 128
+        proj_vals = activations @ direction.T
+        proj_val_std = np.std(proj_vals)
+        interventions[f"model.layers.{layer}.self_attn.head_out"].append((head, direction.squeeze(), proj_val_std, probe))
     for layer, head in top_heads: 
         interventions[f"model.layers.{layer}.self_attn.head_out"] = sorted(interventions[f"model.layers.{layer}.self_attn.head_out"], key = lambda x: x[0])
 
