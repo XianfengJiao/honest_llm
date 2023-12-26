@@ -206,6 +206,22 @@ def main():
                 head_output = rearrange(head_output, 'b s h d -> b s (h d)')
                 return head_output
             lt_modulated_fn = lt_modulated_vector_w_add
+        elif args.direction_type == 'wp_probe_v2':
+            interventions = get_w_interventions_dict(top_heads, probes, head_wise_activations, num_heads, args.use_center_of_mass, args.use_random_dir, com_directions)
+            def lt_modulated_vector_w_add(head_output, layer_name, start_edit_location='lt'):
+                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
+                for head, direction, proj_val_std, probe in interventions[layer_name]:
+                    direction_to_add = torch.tensor(direction).to(args.device)
+                    if start_edit_location == 'lt': 
+                        weight = 1.5 - probe.predict_proba(head_output[:, -1, head, :].detach().cpu().numpy())[0][1]
+                        head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
+                    else: 
+                        for token_i in range(start_edit_location, head_output.shape[1]):
+                            weight = 1.5 - probe.predict_proba(head_output[:, token_i, head, :].detach().cpu().numpy())[0][1]
+                            head_output[:, token_i, head, :] += args.alpha * proj_val_std * direction_to_add * weight
+                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
+                return head_output
+            lt_modulated_fn = lt_modulated_vector_w_add
         elif args.direction_type == 'w_probe_all':
             interventions = get_w_interventions_dict(top_heads, probes, head_wise_activations, num_heads, args.use_center_of_mass, args.use_random_dir, com_directions)
             def lt_modulated_vector_w_add(head_output, layer_name, start_edit_location='lt'):
