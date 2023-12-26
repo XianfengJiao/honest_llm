@@ -185,9 +185,9 @@ def main():
                 for head, direction, proj_val_std, probe in interventions[layer_name]:
                     direction_to_add = torch.tensor(direction).to(args.device)
                     weight = 1.5 - probe.predict_proba(head_output[:, -1, head, :].detach().cpu().numpy())[0][1]
-                    if start_edit_location == 'lt': 
+                    if start_edit_location == 'lt':
                         head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    else: 
+                    else:
                         head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
                 head_output = rearrange(head_output, 'b s h d -> b s (h d)')
                 return head_output
@@ -212,7 +212,7 @@ def main():
                 head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
                 for head, direction, proj_val_std, probe in interventions[layer_name]:
                     direction_to_add = torch.tensor(direction).to(args.device)
-                    if start_edit_location == 'lt': 
+                    if start_edit_location == 'lt':
                         weight = 1.5 - probe.predict_proba(head_output[:, -1, head, :].detach().cpu().numpy())[0][1]
                         head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
                     else: 
