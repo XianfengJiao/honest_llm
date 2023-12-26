@@ -112,9 +112,11 @@ def main():
         # get direction of cluster center
         com_directions = get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
         
+
+        
         top_heads, probes = get_top_heads(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, use_random_dir=False)
         print("Heads intervened: ", sorted(top_heads))
-
+    
         interventions = get_cluster_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=com_directions)
 
         # sample_directions
