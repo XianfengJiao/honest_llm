@@ -90,7 +90,7 @@ def main():
     # head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
     # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
-    separated_head_wise_activations, separated_labels, _ = get_separated_upsample_activations(labels, head_wise_activations, args.cut_rate)
+    separated_head_wise_activations, separated_labels, _ = get_separated_upsample_activations(labels, head_wise_activations, args.cut_rate, num_heads)
     
 
     # run k-fold cross validation

@@ -1163,7 +1163,7 @@ def get_separated_activations(labels, head_wise_activations):
     return separated_head_wise_activations, separated_labels, idxs_to_split_at
 
 
-def get_separated_upsample_activations(labels, head_wise_activations, cut_rate=0.75): 
+def get_separated_upsample_activations(labels, head_wise_activations, cut_rate=0.75, num_heads=32): 
 
     # separate activations by question
     dataset=load_dataset('truthful_qa', 'multiple_choice')['validation']
@@ -1192,7 +1192,7 @@ def get_separated_upsample_activations(labels, head_wise_activations, cut_rate=0
         for ans_i in range(len(all_sample_activations)):
             ans_activations = all_sample_activations[ans_i]
             for token_i in range(int(ans_activations.shape[1] * cut_rate), ans_activations.shape[1]):
-                slc_sample_activations.append(ans_activations[:, token_i, :])
+                slc_sample_activations.append(rearrange(ans_activations[:, token_i, :], 'l (h d) -> l h d', h = num_heads))
                 slc_sample_labels.append(separated_labels[sample_i][ans_i])
         slc_labels.append(slc_sample_labels)
         slc_activations.append(slc_sample_activations)
