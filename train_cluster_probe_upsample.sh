@@ -18,7 +18,7 @@ for c in "${cut_rates[@]}"; do
                     echo "Running: valid_2_fold_llama_7B_cluster${cluster}_probe_cut${c}_heads${num_head}_alpha${a}_baseW${weight//.}"
 
                     # 构建并执行命令
-                    nohup python -u valid_2_fold_cluster_probe_upsample.py --device=0 --probe_base_weight="$weight" --n_clusters="$cluster" --num_heads="$num_head" --alpha="$a" --cut_rate="$c" > "./logs/valid_2_fold_llama_7B_cluster${cluster}_probe_cut${c}_heads${num_head}_alpha${a}_baseW${weight//.}.log" 2>&1 &
+                    nohup python -u valid_2_fold_cluster_probe_upsample.py --device=1 --probe_base_weight="$weight" --n_clusters="$cluster" --num_heads="$num_head" --alpha="$a" --cut_rate="$c" > "./logs/valid_2_fold_llama_7B_cluster${cluster}_probe_cut${c}_heads${num_head}_alpha${a}_baseW${weight//.}.log" 2>&1 &
                     
                     # 等待上一个命令完成
                     wait
