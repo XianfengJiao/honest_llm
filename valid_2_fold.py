@@ -147,7 +147,10 @@ def main():
     if args.collect == 'all':
         ans_start_pos, ans_len = find_ans_positions(tokens)
         if args.cut_random:
-            head_wise_activations = [activations[:, pos + int(l * random.uniform(0.6, 1)) - 1,:] for activations, pos, l in zip(head_wise_activations, ans_start_pos, ans_len)]    
+            head_wise_activations = [activations[:, pos + int(l * random.uniform(args.random_lower_bound, 1)) - 1,:] for activations, pos, l in zip(head_wise_activations, ans_start_pos, ans_len)]    
+            # np.save(f'/data/wtl/honest_llm/activations/llama_7B_tqa_mc2_random_from{str(int(args.random_lower_bound * 100)).zfill(3)}_head_wise.npy', head_wise_activations)
+            # print('save success!')
+            # exit(0)
         else:
             head_wise_activations = [activations[:, pos + int(l * args.cur_rate) - 1,:] for activations, pos, l in zip(head_wise_activations, ans_start_pos, ans_len)]
     elif args.collect == 'stimulus':

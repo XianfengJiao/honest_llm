@@ -1036,14 +1036,14 @@ def train_probes_cluster(seed, usable_idxs, cluster_idxs, separated_head_wise_ac
                 y_train = np.concatenate([separated_labels[i] for i in train_set_idxs], axis = 0)
                 y_val = np.concatenate([separated_labels[i] for i in val_set_idxs], axis = 0)
                 clf = LogisticRegression(random_state=seed, max_iter=1000).fit(X_train, y_train)
-                y_pred = clf.predict(X_train)
+                # y_pred = clf.predict(X_train)
                 y_val_pred = clf.predict(X_val)
                 cluster_head_accs.append(accuracy_score(y_val, y_val_pred))
                 cluster_probes.append(clf)
             all_head_accs.append(cluster_head_accs)
-            probes.append(cluster_probes)
+            probes.append(cluster_probes) # (num_layers * num_heads, num_clusters)
 
-    all_head_accs_np = np.array(all_head_accs)
+    all_head_accs_np = np.array(all_head_accs) # (num_layers * num_heads, num_clusters)
 
     return probes, all_head_accs_np
 
@@ -1053,8 +1053,8 @@ def get_top_heads_cluster(train_idxs, val_idxs, separated_activations, separated
     all_probes, all_head_accs_np = train_probes_cluster(seed, usable_idxs, cluster_idxs, separated_activations, separated_labels, num_layers=num_layers, num_heads=num_heads)
     all_head_accs_np = all_head_accs_np.reshape(num_layers, num_heads, len(cluster_idxs[0][0]))
     
-    top_heads = []
-    probes = []
+    top_heads = [] # (num_clusters, num_to_intervene)
+    probes = [] # (num_clusters, num_layers * num_heads)
 
     for cluster_i in range(len(cluster_idxs[0][0])):
         cluster_top_heads = []

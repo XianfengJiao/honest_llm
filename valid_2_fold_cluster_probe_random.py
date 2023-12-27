@@ -26,23 +26,24 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
-    parser.add_argument('--num_heads', type=int, default=24, help='K, number of top heads to intervene on')
-    parser.add_argument('--alpha', type=float, default=5, help='alpha, intervention strength')
+    parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
+    parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
-    parser.add_argument('--device', type=int, default=0, help='device')
+    parser.add_argument('--device', type=int, default=1, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
     parser.add_argument('--judge_name', type=str, required=False)
     parser.add_argument('--info_name', type=str, required=False)
+    parser.add_argument('--random_lower_bound', type=float, default=0.5)
     args = parser.parse_args()
 
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
 
-    experiment_name = f'num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}'
-    experiments_path = f'/data/wtl/honest_llm/cluster_probe_experiments/{experiment_name}'
+    experiment_name = f'num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_random{args.random_lower_bound}'
+    experiments_path = f'/data/wtl/honest_llm/cluster_probe_random_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
 
@@ -84,7 +85,7 @@ def main():
     num_heads = model.config.num_attention_heads
 
     # load activations 
-    head_wise_activations = pkl.load(open('/data/jxf/activations/llama_7B_tqa_mc2_all_100_head_wise.pkl', 'rb'))
+    head_wise_activations = np.load(f'/data/wtl/honest_llm/activations/llama_7B_tqa_mc2_random_from{str(int(args.random_lower_bound * 100)).zfill(3)}_head_wise.npy')
     labels = np.load('/data/jxf/activations/llama_7B_tqa_mc2_all_labels.npy')
     head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
