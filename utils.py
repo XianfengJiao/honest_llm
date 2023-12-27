@@ -1162,6 +1162,44 @@ def get_separated_activations(labels, head_wise_activations):
 
     return separated_head_wise_activations, separated_labels, idxs_to_split_at
 
+
+def get_separated_upsample_activations(labels, head_wise_activations, cut_rate=0.75): 
+
+    # separate activations by question
+    dataset=load_dataset('truthful_qa', 'multiple_choice')['validation']
+    actual_labels = []
+    for i in range(len(dataset)):
+        actual_labels.append(dataset[i]['mc2_targets']['labels'])
+
+    idxs_to_split_at = np.cumsum([len(x) for x in actual_labels])        
+
+    labels = list(labels)
+    separated_labels = []
+    for i in range(len(idxs_to_split_at)):
+        if i == 0:
+            separated_labels.append(labels[:idxs_to_split_at[i]])
+        else:
+            separated_labels.append(labels[idxs_to_split_at[i-1]:idxs_to_split_at[i]])
+    assert separated_labels == actual_labels
+    
+    slc_labels = []
+    slc_activations = []
+    start_idx = 0
+    for sample_i, end_idx in enumerate(idxs_to_split_at):
+        all_sample_activations = head_wise_activations[start_idx:end_idx]
+        slc_sample_activations = []
+        slc_sample_labels = []
+        for ans_i in range(len(all_sample_activations)):
+            ans_activations = all_sample_activations[ans_i]
+            for token_i in range(int(ans_activations.shape[1] * cut_rate), ans_activations.shape[1]):
+                slc_sample_activations.append(ans_activations[:, token_i, :])
+                slc_sample_labels.append(separated_labels[sample_i][ans_i])
+        slc_labels.append(slc_sample_labels)
+        slc_activations.append(slc_sample_activations)
+        start_idx = end_idx
+
+    return slc_activations, slc_labels, idxs_to_split_at
+
 def get_com_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels): 
 
     com_directions = []
