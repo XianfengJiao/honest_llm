@@ -1013,6 +1013,86 @@ def get_top_heads(train_idxs, val_idxs, separated_activations, separated_labels,
 
     return top_heads, probes
 
+def train_probes_cluster(seed, usable_idxs, cluster_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads):
+    
+    all_head_accs = []
+    probes = []
+
+    for layer in tqdm(range(num_layers), desc='train probes'): 
+        for head in range(num_heads):
+            cluster_probes = []
+            cluster_head_accs = []
+            for cluster_idx in cluster_idxs[layer][head]:
+                train_idxs = usable_idxs[cluster_idx]
+                train_set_idxs = np.random.choice(train_idxs, size=int(len(train_idxs)*(0.8)), replace=False)
+                val_set_idxs = np.array([x for x in train_idxs if x not in train_set_idxs])
+
+                if len(val_set_idxs) < 5:
+                    cluster_head_accs.append(0)
+                    cluster_probes.append(LogisticRegression(random_state=seed, max_iter=1000))
+                    continue
+                X_train = np.concatenate([separated_head_wise_activations[i] for i in train_set_idxs], axis = 0)[:,layer,head,:]
+                X_val = np.concatenate([separated_head_wise_activations[i] for i in val_set_idxs], axis = 0)[:,layer,head,:]
+                y_train = np.concatenate([separated_labels[i] for i in train_set_idxs], axis = 0)
+                y_val = np.concatenate([separated_labels[i] for i in val_set_idxs], axis = 0)
+                clf = LogisticRegression(random_state=seed, max_iter=1000).fit(X_train, y_train)
+                y_pred = clf.predict(X_train)
+                y_val_pred = clf.predict(X_val)
+                cluster_head_accs.append(accuracy_score(y_val, y_val_pred))
+                cluster_probes.append(clf)
+            all_head_accs.append(cluster_head_accs)
+            probes.append(cluster_probes)
+
+    all_head_accs_np = np.array(all_head_accs)
+
+    return probes, all_head_accs_np
+
+def get_top_heads_cluster(train_idxs, val_idxs, separated_activations, separated_labels, num_layers, num_heads, seed, num_to_intervene, cluster_idxs, use_random_dir=False):
+    
+    usable_idxs = np.concatenate([train_idxs, val_idxs], axis=0)
+    all_probes, all_head_accs_np = train_probes_cluster(seed, usable_idxs, cluster_idxs, separated_activations, separated_labels, num_layers=num_layers, num_heads=num_heads)
+    all_head_accs_np = all_head_accs_np.reshape(num_layers, num_heads, len(cluster_idxs[0][0]))
+    
+    top_heads = []
+    probes = []
+
+    for cluster_i in range(len(cluster_idxs[0][0])):
+        cluster_top_heads = []
+        probes.append([p[cluster_i] for p in all_probes])
+        cluster_head_accs_np = all_head_accs_np[:, :, cluster_i]
+
+        top_accs = np.argsort(cluster_head_accs_np.reshape(num_heads*num_layers))[::-1][:num_to_intervene] # 排序后反转取索引
+        top_accs = [idx for idx in top_accs if cluster_head_accs_np.flatten()[idx] > 0]
+        if len(top_accs) < num_to_intervene:
+            print('Warning: Unable to find enough heads for intervention.')
+        cluster_top_heads = [flattened_idx_to_layer_head(idx, num_heads) for idx in top_accs]  # 准确率最高的层和head的索引        
+        top_heads.append(cluster_top_heads)
+
+    return top_heads, probes
+
+
+def get_cluster_probe_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
+    interventions = {}
+
+    for cluster_i in range(len(top_heads)):
+        for layer, head in top_heads[cluster_i]: 
+            interventions[f"model.layers.{layer}.self_attn.head_out"] = []
+
+    for cluster_i in range(len(top_heads)):
+        for layer, head in top_heads[cluster_i]: 
+            probe = probes[cluster_i][layer_head_to_flattened_idx(layer, head, num_heads)]
+            direction = probe.coef_        
+            direction = direction / np.linalg.norm(direction)
+            activations = tuning_activations[:,layer,head,:] # batch x 128
+            proj_vals = activations @ direction.T
+            proj_val_std = np.std(proj_vals)
+            interventions[f"model.layers.{layer}.self_attn.head_out"].append((head, direction.squeeze(), proj_val_std, probe))
+        for layer, _ in top_heads[cluster_i]: 
+            interventions[f"model.layers.{layer}.self_attn.head_out"] = sorted(interventions[f"model.layers.{layer}.self_attn.head_out"], key = lambda x: x[0])
+
+    return interventions
+
+
 def get_cluster_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
     interventions = {}
     for layer, head in top_heads: 
@@ -1194,3 +1274,25 @@ def get_cluster_mean_directions(num_layers, num_heads, train_set_idxs, val_set_i
     com_directions = np.array(com_directions)
 
     return com_directions
+
+
+def get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=3, directions=None): 
+
+    cluster_idxs = []
+
+    for layer in tqdm(range(num_layers), desc=f'gen cluster-{n_clusters} mean directions:'): 
+        layer_cluster_idxs = []
+        for head in range(num_heads): 
+            usable_idxs = np.concatenate([train_set_idxs, val_set_idxs], axis=0)
+            # usable_head_wise_activations = [separated_head_wise_activations[i][:,layer,head,:] for i in usable_idxs]
+            # usable_labels = [separated_labels[i] for i in usable_idxs]
+            # usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels, random_reverse=False)
+
+            usable_head_wise_directions = directions[usable_idxs, layer, head, :]
+            kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42).fit(usable_head_wise_directions)
+            cluster_labels = kmeans.labels_
+            head_clusters = [np.where(cluster_labels == i)[0] for i in range(n_clusters)]
+            layer_cluster_idxs.append(head_clusters)
+        cluster_idxs.append(layer_cluster_idxs)
+
+    return cluster_idxs
