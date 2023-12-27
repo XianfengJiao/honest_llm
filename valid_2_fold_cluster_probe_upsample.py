@@ -116,8 +116,9 @@ def main():
 
         top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
         # print("Heads intervened: ", sorted(top_heads))
-    
-        interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
+
+        tuning_activations = np.array([token_ac for ans_ac in separated_head_wise_activations for token_ac in ans_ac])
+        interventions = get_cluster_probe_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
 
         # sample_directions
         sample_directions = head_wise_activation_directions[test_idxs]
