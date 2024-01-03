@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # 定义 probe_base_weight 和 n_clusters 的数组
-alpha=(15 10 5)
-probe_base_weights=(0)
-n_clusters=(2 3 4)
-num_heads=(16 24)
+alpha=(15)
+probe_base_weights=(0.2 0.3 0.4 0.5)
+n_clusters=(3)
+num_heads=(16 24 32)
 
 # 外循环遍历 probe_base_weight
 

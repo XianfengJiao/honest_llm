@@ -124,7 +124,10 @@ def main():
             head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
             for head, direction, proj_val_std, probe in interventions[layer_name]:
                 direction_to_add = torch.tensor(direction).to(args.device)
-                weight = 1 + args.probe_base_weight - probe.predict(head_output[:, -1, head, :].detach().cpu().numpy())[0]
+                if args.probe_base_weight == -1:
+                    weight = 1
+                else:
+                    weight = 1 + args.probe_base_weight - probe.predict(head_output[:, -1, head, :].detach().cpu().numpy())[0]
 
                 if start_edit_location == 'lt': 
                     head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight

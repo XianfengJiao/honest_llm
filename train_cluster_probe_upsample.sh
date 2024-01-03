@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # 定义 probe_base_weight 和 n_clusters 的数组
-alpha=(15)
-probe_base_weights=(0)
-n_clusters=(4)
-num_heads=(48)
-cut_rates=(0.75)
+alpha=(10 15)
+probe_base_weights=(0 0.1)
+n_clusters=(3)
+num_heads=(16 24 32)
+cut_rates=(0.9 0.95)
 
 # 外循环遍历 probe_base_weight
 for c in "${cut_rates[@]}"; do
