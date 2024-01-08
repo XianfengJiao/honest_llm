@@ -2,8 +2,8 @@
 
 # 定义 probe_base_weight 和 n_clusters 的数组
 alpha=(15 10)
-probe_base_weights=(0 0.5)
-n_clusters=(3 4 1)
+probe_base_weights=(0)
+n_clusters=(3 4)
 num_heads=(48 24)
 cut_rates=(0.75 0.9 0.5)
 
