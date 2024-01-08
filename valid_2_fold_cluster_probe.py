@@ -29,9 +29,10 @@ def main():
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
+    parser.add_argument('--probe_type', type=str, default='01')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
-    parser.add_argument('--device', type=int, default=1, help='device')
+    parser.add_argument('--device', type=int, default=2, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
     parser.add_argument('--judge_name', type=str, required=False)
@@ -41,7 +42,7 @@ def main():
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
 
-    experiment_name = f'cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}'
+    experiment_name = f'cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
     experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
@@ -61,7 +62,9 @@ def main():
 
 
     # order csv by huggingface order, the order used to save activations
-    dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
+    # dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
+    url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
+    dataset = load_dataset('parquet', data_files=url)['train']
     golden_q_order = list(dataset["question"])
     df = df.sort_values(by='Question', key=lambda x: x.map({k: i for i, k in enumerate(golden_q_order)}))
 
@@ -120,19 +123,41 @@ def main():
         # sample_directions
         sample_directions = head_wise_activation_directions[test_idxs]
 
-        def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
-            head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
-            for head, direction, proj_val_std, probe in interventions[layer_name]:
-                direction_to_add = torch.tensor(direction).to(args.device)
-                weight = 1 + args.probe_base_weight - probe.predict(head_output[:, -1, head, :].detach().cpu().numpy())[0]
 
-                if start_edit_location == 'lt': 
-                    head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                else: 
-                    head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                
-            head_output = rearrange(head_output, 'b s h d -> b s (h d)')
-            return head_output
+        if args.probe_type == 'prob':
+            def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
+                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
+                for head, direction, proj_val_std, probe in interventions[layer_name]:
+                    direction_to_add = torch.tensor(direction).to(args.device)
+                    if args.probe_base_weight == -1:
+                        weight = 1
+                    else:
+                        weight = 1 + args.probe_base_weight - probe.predict_proba(head_output[:, -1, head, :].detach().cpu().numpy())[0][1]
+
+                    if start_edit_location == 'lt': 
+                        head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
+                    else: 
+                        head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
+                    
+                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
+                return head_output
+        else:
+            def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
+                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
+                for head, direction, proj_val_std, probe in interventions[layer_name]:
+                    direction_to_add = torch.tensor(direction).to(args.device)
+                    if args.probe_base_weight == -1:
+                        weight = 1
+                    else:
+                        weight = 1 + args.probe_base_weight - probe.predict(head_output[:, -1, head, :].detach().cpu().numpy())[0]
+
+                    if start_edit_location == 'lt': 
+                        head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
+                    else: 
+                        head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
+                    
+                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
+                return head_output
 
         filename = f'{args.model_name}_seed_{args.seed}_top_{args.num_heads}_heads_alpha_{int(args.alpha)}_fold_{i}'
                     

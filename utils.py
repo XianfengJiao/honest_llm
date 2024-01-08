@@ -1142,7 +1142,9 @@ def get_interventions_dict(top_heads, probes, tuning_activations, num_heads, use
 def get_separated_activations(labels, head_wise_activations): 
 
     # separate activations by question
-    dataset=load_dataset('truthful_qa', 'multiple_choice')['validation']
+    # dataset=load_dataset('truthful_qa', 'multiple_choice')['validation']
+    url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
+    dataset = load_dataset('parquet', data_files=url)['train']
     actual_labels = []
     for i in range(len(dataset)):
         actual_labels.append(dataset[i]['mc2_targets']['labels'])
