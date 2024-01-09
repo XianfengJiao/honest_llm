@@ -1070,6 +1070,30 @@ def get_top_heads_cluster(train_idxs, val_idxs, separated_activations, separated
 
     return top_heads, probes
 
+def get_w_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
+
+    interventions = {}
+    for layer, head in top_heads: 
+        interventions[f"model.layers.{layer}.self_attn.head_out"] = []
+    for layer, head in top_heads:
+        if use_center_of_mass: 
+            direction = com_directions[layer_head_to_flattened_idx(layer, head, num_heads)]
+        elif use_random_dir: 
+            direction = np.random.normal(size=(128,))
+        else: 
+            direction = probes[layer_head_to_flattened_idx(layer, head, num_heads)].coef_
+
+        probe = probes[layer_head_to_flattened_idx(layer, head, num_heads)]
+        direction = direction / np.linalg.norm(direction)
+        activations = tuning_activations[:,layer,head,:] # batch x 128
+        proj_vals = activations @ direction.T
+        proj_val_std = np.std(proj_vals)
+        interventions[f"model.layers.{layer}.self_attn.head_out"].append((head, direction.squeeze(), proj_val_std, probe))
+    for layer, head in top_heads: 
+        interventions[f"model.layers.{layer}.self_attn.head_out"] = sorted(interventions[f"model.layers.{layer}.self_attn.head_out"], key = lambda x: x[0])
+
+    return interventions
+
 
 def get_cluster_probe_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
     interventions = {}
@@ -1336,3 +1360,25 @@ def get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separa
         cluster_idxs.append(layer_cluster_idxs)
 
     return cluster_idxs
+
+def fewshot_eqipped(frame, tag='none'):
+    if tag not in frame.columns:
+        frame[tag] = ''
+
+    frame[tag].fillna('', inplace=True)
+    frame[tag] = frame[tag].astype(str)
+
+    tokens = []
+
+    icl_format = "Q: {q}\n\nA: {a}"
+    
+    for idx in frame.index:
+        if pd.isnull(frame.loc[idx, tag]) or not len(frame.loc[idx, tag]):
+            answer = frame.loc[idx]['Best Answer']
+            question = frame.loc[idx]['Question']
+            prompt = icl_format.format(q=question,a=answer)
+            tokens.append(prompt)
+    
+    few_shot_prompts = "\n\n".join(tokens)
+    
+    return few_shot_prompts

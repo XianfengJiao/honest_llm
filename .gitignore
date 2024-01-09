@@ -164,6 +164,7 @@ directions
 datasets
 validation/results_dump
 validation/splits
+validation/logs
 validation/sh*.sh
 validation/check_results.ipynb
 TruthfulQA
