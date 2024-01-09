@@ -45,7 +45,10 @@ def main():
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
 
-    experiment_name = f'fewshot_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}_{args.method}'
+    if args.pure:
+        experiment_name = f'fewshot_pure_{args.method}'
+    else:
+        experiment_name = f'fewshot_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}_{args.method}'
     experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
