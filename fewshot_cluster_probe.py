@@ -100,6 +100,7 @@ def main():
     # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
     separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
 
+    results = []
     # run k-fold cross validation
     for i in range(args.num_fold):
 
