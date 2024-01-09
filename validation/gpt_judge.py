@@ -1,6 +1,5 @@
 from openai import OpenAI
 import os
-os.environ['OPENAI_API_KEY'] = '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'
 import torch
 from einops import rearrange
 import numpy as np
