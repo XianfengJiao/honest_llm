@@ -101,6 +101,7 @@ def main():
     # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
     separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
 
+    results = []
     # run k-fold cross validation
     for i in range(args.num_fold):
 
@@ -114,6 +115,8 @@ def main():
 
         train_set_idxs = np.random.choice(test_set_idxs, size=int(len(test_set_idxs)*(args.fewshot_ratio)), replace=False)
         test_set_idxs = np.array([x for x in test_set_idxs if x not in train_set_idxs])
+
+        # test_set_idxs = np.random.choice(test_set_idxs, size=int(len(test_set_idxs)*(0.05/0.9)), replace=False)
 
         many_shot_prefix = None
         if args.method == 'icl':

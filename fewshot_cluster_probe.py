@@ -115,6 +115,8 @@ def main():
         train_set_idxs = np.random.choice(test_set_idxs, size=int(len(test_set_idxs)*(args.fewshot_ratio)), replace=False)
         test_set_idxs = np.array([x for x in test_set_idxs if x not in train_set_idxs])
 
+        # test_set_idxs = np.random.choice(test_set_idxs, size=int(len(test_set_idxs)*(0.05/0.9)), replace=False)
+
         many_shot_prefix = None
         if args.method == 'icl':
             many_shot_prefix = fewshot_eqipped(df.iloc[train_set_idxs])
