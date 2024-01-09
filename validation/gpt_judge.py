@@ -1,6 +1,6 @@
 from openai import OpenAI
 import os
-os.environ['OPENAI_API_KEY'] = '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'
+os.environ['OPENAI_API_KEY'] = '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'
 import torch
 from einops import rearrange
 import numpy as np
@@ -93,7 +93,7 @@ def run_end2end_GPT3(model_key, tag, engine, frame, info=False):
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
-    parser.add_argument('--valid_dir', type=str, default='/data/jxf/honest_llm/validation/llama_7B_tqa_mc2_all_100_w_probe_alpha15')
+    parser.add_argument('--valid_dir', type=str, default='/data/jxf/honest_llm/cluster_experiments/cluster_probe_num_heads24_alpha15.0_n_clusters3_baseW0.0_prob')
     parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
     parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
     args = parser.parse_args()
