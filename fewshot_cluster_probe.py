@@ -35,7 +35,7 @@ def main():
     parser.add_argument("--num_fold", type=int, default=1, help="number of folds")
     parser.add_argument('--fewshot_ratio', type=float, default=0.053)
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.05)
-    parser.add_argument('--device', type=int, default=2, help='device')
+    parser.add_argument('--device', type=int, default=0, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
     parser.add_argument('--judge_name', type=str, required=False)
