@@ -26,13 +26,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
-    parser.add_argument('--num_heads', type=int, default=24, help='K, number of top heads to intervene on')
-    parser.add_argument('--alpha', type=float, default=5, help='alpha, intervention strength')
+    parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
+    parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
+    parser.add_argument('--cut_rate', type=float, default=0.75)
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
-    parser.add_argument('--probe_type', type=str, default='01')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
-    parser.add_argument('--device', type=int, default=2, help='device')
+    parser.add_argument('--device', type=int, default=3, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
     parser.add_argument('--judge_name', type=str, required=False)
@@ -42,7 +42,7 @@ def main():
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
 
-    experiment_name = f'cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
+    experiment_name = f'cluster_probe_upsample_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_cut{args.cut_rate}'
     experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
@@ -54,7 +54,7 @@ def main():
 
     # load dataframe and activations direcitons
     df = pd.read_csv('./TruthfulQA/data/v0/TruthfulQA.csv')
-    head_wise_activation_directions = np.load('/data/wtl/honest_llm/directions/head_wise_activation_directions.npy')
+    head_wise_activation_directions = np.load('/data/jxf/honest_llm/directions/head_wise_activation_directions.npy')
     # norms = np.linalg.norm(head_wise_activation_directions, axis=-1, keepdims=True)
     # # 避免除以零的情况
     # norms[norms == 0] = np.inf  # 将为0范数设置为无穷大，这样除以无穷大会得到0
@@ -62,9 +62,7 @@ def main():
 
 
     # order csv by huggingface order, the order used to save activations
-    # dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
-    url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
-    dataset = load_dataset('parquet', data_files=url)['train']
+    dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
     golden_q_order = list(dataset["question"])
     df = df.sort_values(by='Question', key=lambda x: x.map({k: i for i, k in enumerate(golden_q_order)}))
 
@@ -87,12 +85,13 @@ def main():
     num_heads = model.config.num_attention_heads
 
     # load activations 
-    head_wise_activations = pkl.load(open('/data/jxf/activations/llama_7B_tqa_mc2_all_100_head_wise.pkl', 'rb'))
+    head_wise_activations = pkl.load(open('/data/jxf/activations/llama_7B_tqa_mc2_all_head_wise.pkl', 'rb'))
     labels = np.load('/data/jxf/activations/llama_7B_tqa_mc2_all_labels.npy')
-    head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
+    # head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
     # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
-    separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
+    separated_head_wise_activations, separated_labels, _ = get_separated_upsample_activations(labels, head_wise_activations, args.cut_rate, num_heads)
+    
 
     # run k-fold cross validation
     results = []
@@ -112,52 +111,31 @@ def main():
         df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
         df.iloc[test_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
-        # get direction of cluster center, return (num_layers, num_heads, num_cluster, index)
+        # get direction of cluster center
         cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
 
         top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
         # print("Heads intervened: ", sorted(top_heads))
-    
-        interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
+
+        tuning_activations = np.array([token_ac for ans_ac in separated_head_wise_activations for token_ac in ans_ac])
+        interventions = get_cluster_probe_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
 
         # sample_directions
         sample_directions = head_wise_activation_directions[test_idxs]
 
+        def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
+            head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
+            for head, direction, proj_val_std, probe in interventions[layer_name]:
+                direction_to_add = torch.tensor(direction).to(args.device)
+                weight = 1 + args.probe_base_weight - probe.predict(head_output[:, -1, head, :].detach().cpu().numpy())[0]
 
-        if args.probe_type == 'prob':
-            def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
-                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
-                for head, direction, proj_val_std, probe in interventions[layer_name]:
-                    direction_to_add = torch.tensor(direction).to(args.device)
-                    if args.probe_base_weight == -1:
-                        weight = 1
-                    else:
-                        weight = 1 + args.probe_base_weight - probe.predict_proba(head_output[:, -1, head, :].detach().cpu().numpy())[0][1]
-
-                    if start_edit_location == 'lt': 
-                        head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    else: 
-                        head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    
-                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
-                return head_output
-        else:
-            def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
-                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
-                for head, direction, proj_val_std, probe in interventions[layer_name]:
-                    direction_to_add = torch.tensor(direction).to(args.device)
-                    if args.probe_base_weight == -1:
-                        weight = 1
-                    else:
-                        weight = 1 + args.probe_base_weight - probe.predict(head_output[:, -1, head, :].detach().cpu().numpy())[0]
-
-                    if start_edit_location == 'lt': 
-                        head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    else: 
-                        head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    
-                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
-                return head_output
+                if start_edit_location == 'lt': 
+                    head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
+                else: 
+                    head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
+                
+            head_output = rearrange(head_output, 'b s h d -> b s (h d)')
+            return head_output
 
         filename = f'{args.model_name}_seed_{args.seed}_top_{args.num_heads}_heads_alpha_{int(args.alpha)}_fold_{i}'
                     
@@ -190,9 +168,4 @@ def main():
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
 if __name__ == "__main__":
-    # main()
-    model_name = 'circulus/alpaca-7b'
-    # model_name = 'AlekseyKorshuk/vicuna-7b'
-    tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
-    model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16)
-    
+    main()

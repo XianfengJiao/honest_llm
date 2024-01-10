@@ -1070,6 +1070,30 @@ def get_top_heads_cluster(train_idxs, val_idxs, separated_activations, separated
 
     return top_heads, probes
 
+def get_w_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
+
+    interventions = {}
+    for layer, head in top_heads: 
+        interventions[f"model.layers.{layer}.self_attn.head_out"] = []
+    for layer, head in top_heads:
+        if use_center_of_mass: 
+            direction = com_directions[layer_head_to_flattened_idx(layer, head, num_heads)]
+        elif use_random_dir: 
+            direction = np.random.normal(size=(128,))
+        else: 
+            direction = probes[layer_head_to_flattened_idx(layer, head, num_heads)].coef_
+
+        probe = probes[layer_head_to_flattened_idx(layer, head, num_heads)]
+        direction = direction / np.linalg.norm(direction)
+        activations = tuning_activations[:,layer,head,:] # batch x 128
+        proj_vals = activations @ direction.T
+        proj_val_std = np.std(proj_vals)
+        interventions[f"model.layers.{layer}.self_attn.head_out"].append((head, direction.squeeze(), proj_val_std, probe))
+    for layer, head in top_heads: 
+        interventions[f"model.layers.{layer}.self_attn.head_out"] = sorted(interventions[f"model.layers.{layer}.self_attn.head_out"], key = lambda x: x[0])
+
+    return interventions
+
 
 def get_cluster_probe_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
     interventions = {}
@@ -1142,7 +1166,9 @@ def get_interventions_dict(top_heads, probes, tuning_activations, num_heads, use
 def get_separated_activations(labels, head_wise_activations): 
 
     # separate activations by question
-    dataset=load_dataset('truthful_qa', 'multiple_choice')['validation']
+    # dataset=load_dataset('truthful_qa', 'multiple_choice')['validation']
+    url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
+    dataset = load_dataset('parquet', data_files=url)['train']
     actual_labels = []
     for i in range(len(dataset)):
         actual_labels.append(dataset[i]['mc2_targets']['labels'])
@@ -1161,6 +1187,46 @@ def get_separated_activations(labels, head_wise_activations):
     separated_head_wise_activations = np.split(head_wise_activations, idxs_to_split_at)
 
     return separated_head_wise_activations, separated_labels, idxs_to_split_at
+
+
+def get_separated_upsample_activations(labels, head_wise_activations, cut_rate=0.75, num_heads=32): 
+
+    # separate activations by question
+    url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
+    dataset = load_dataset('parquet', data_files=url)['train']
+    # dataset=load_dataset('truthful_qa', 'multiple_choice')['validation']
+    actual_labels = []
+    for i in range(len(dataset)):
+        actual_labels.append(dataset[i]['mc2_targets']['labels'])
+
+    idxs_to_split_at = np.cumsum([len(x) for x in actual_labels])        
+
+    labels = list(labels)
+    separated_labels = []
+    for i in range(len(idxs_to_split_at)):
+        if i == 0:
+            separated_labels.append(labels[:idxs_to_split_at[i]])
+        else:
+            separated_labels.append(labels[idxs_to_split_at[i-1]:idxs_to_split_at[i]])
+    assert separated_labels == actual_labels
+    
+    slc_labels = []
+    slc_activations = []
+    start_idx = 0
+    for sample_i, end_idx in enumerate(idxs_to_split_at):
+        all_sample_activations = head_wise_activations[start_idx:end_idx]
+        slc_sample_activations = []
+        slc_sample_labels = []
+        for ans_i in range(len(all_sample_activations)):
+            ans_activations = all_sample_activations[ans_i]
+            for token_i in range(int(ans_activations.shape[1] * cut_rate), ans_activations.shape[1]):
+                slc_sample_activations.append(rearrange(ans_activations[:, token_i, :], 'l (h d) -> l h d', h = num_heads))
+                slc_sample_labels.append(separated_labels[sample_i][ans_i])
+        slc_labels.append(slc_sample_labels)
+        slc_activations.append(slc_sample_activations)
+        start_idx = end_idx
+
+    return slc_activations, slc_labels, idxs_to_split_at
 
 def get_com_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels): 
 
@@ -1296,3 +1362,25 @@ def get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separa
         cluster_idxs.append(layer_cluster_idxs)
 
     return cluster_idxs
+
+def fewshot_eqipped(frame, tag='none'):
+    if tag not in frame.columns:
+        frame[tag] = ''
+
+    frame[tag].fillna('', inplace=True)
+    frame[tag] = frame[tag].astype(str)
+
+    tokens = []
+
+    icl_format = "Q: {q}\n\nA: {a}"
+    
+    for idx in frame.index:
+        if pd.isnull(frame.loc[idx, tag]) or not len(frame.loc[idx, tag]):
+            answer = frame.loc[idx]['Best Answer']
+            question = frame.loc[idx]['Question']
+            prompt = icl_format.format(q=question,a=answer)
+            tokens.append(prompt)
+    
+    few_shot_prompts = "\n\n".join(tokens)
+    
+    return few_shot_prompts

@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # 定义 probe_base_weight 和 n_clusters 的数组
-alpha=(7 8 10 12)
-probe_base_weights=(-1)
+alpha=(15 10)
+probe_base_weights=(0 0.5)
 n_clusters=(3)
 num_heads=(16 24)
 
@@ -17,7 +17,7 @@ for a in "${alpha[@]}"; do
                 echo "Running: valid_2_fold_llama_7B_cluster${cluster}_probe_heads${num_head}_alpha${a}_baseW${weight//.}"
 
                 # 构建并执行命令
-                nohup python -u valid_2_fold_cluster_probe.py --device=0 --probe_type=prob --probe_base_weight="$weight" --n_clusters="$cluster" --num_heads="$num_head" --alpha="$a" > "./logs/valid_2_fold_llama_7B_cluster${cluster}_probe_heads${num_head}_alpha${a}_baseW${weight//.}_prob.log" 2>&1 &
+                nohup python -u valid_2_fold_cluster_probe_proj.py --device=3 --probe_base_weight="$weight" --n_clusters="$cluster" --num_heads="$num_head" --alpha="$a" > "./logs/valid_2_fold_llama_7B_cluster${cluster}_probe_proj_heads${num_head}_alpha${a}_baseW${weight//.}.log" 2>&1 &
                 
                 # 等待上一个命令完成
                 wait
