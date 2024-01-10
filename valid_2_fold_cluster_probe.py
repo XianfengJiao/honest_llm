@@ -190,4 +190,9 @@ def main():
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
 if __name__ == "__main__":
-    main()
+    # main()
+    model_name = 'circulus/alpaca-7b'
+    # model_name = 'AlekseyKorshuk/vicuna-7b'
+    tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
+    model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16)
+    
