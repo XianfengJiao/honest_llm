@@ -1192,7 +1192,9 @@ def get_separated_activations(labels, head_wise_activations):
 def get_separated_upsample_activations(labels, head_wise_activations, cut_rate=0.75, num_heads=32): 
 
     # separate activations by question
-    dataset=load_dataset('truthful_qa', 'multiple_choice')['validation']
+    url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
+    dataset = load_dataset('parquet', data_files=url)['train']
+    # dataset=load_dataset('truthful_qa', 'multiple_choice')['validation']
     actual_labels = []
     for i in range(len(dataset)):
         actual_labels.append(dataset[i]['mc2_targets']['labels'])
