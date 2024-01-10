@@ -28,14 +28,14 @@ def main():
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
-    parser.add_argument('--probe_base_weight', type=float, default=0)
+    parser.add_argument('--cut_rate', type=float, default=0.75)
+    parser.add_argument('--probe_base_weight', type=float, default=0.5)
     parser.add_argument('--probe_type', type=str, default='prob')
-    parser.add_argument('--pure', action='store_true', default=False)
     parser.add_argument('--method', type=str, default='icl')
     parser.add_argument("--num_fold", type=int, default=1, help="number of folds")
     parser.add_argument('--fewshot_ratio', type=float, default=0.053)
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.05)
-    parser.add_argument('--device', type=int, default=2, help='device')
+    parser.add_argument('--device', type=int, default=3, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
     parser.add_argument('--judge_name', type=str, required=False)
@@ -45,10 +45,7 @@ def main():
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
 
-    if args.pure:
-        experiment_name = f'fewshot_pure_{args.method}'
-    else:
-        experiment_name = f'fewshot_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}_{args.method}'
+    experiment_name = f'fewshot_cluster_probe_upsample_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_cut{args.cut_rate}_{args.probe_type}_{args.method}'
     experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
@@ -68,7 +65,6 @@ def main():
 
 
     # order csv by huggingface order, the order used to save activations
-    # dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
     url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
     dataset = load_dataset('parquet', data_files=url)['train']
     golden_q_order = list(dataset["question"])
@@ -93,15 +89,16 @@ def main():
     num_heads = model.config.num_attention_heads
 
     # load activations 
-    head_wise_activations = pkl.load(open('/data/jxf/activations/llama_7B_tqa_mc2_all_100_head_wise.pkl', 'rb'))
+    head_wise_activations = pkl.load(open('/data/jxf/activations/llama_7B_tqa_mc2_all_head_wise.pkl', 'rb'))
     labels = np.load('/data/jxf/activations/llama_7B_tqa_mc2_all_labels.npy')
-    head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
+    # head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
     # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
-    separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
+    separated_head_wise_activations, separated_labels, _ = get_separated_upsample_activations(labels, head_wise_activations, args.cut_rate, num_heads)
+    
 
-    results = []
     # run k-fold cross validation
+    results = []
     for i in range(args.num_fold):
 
         all_idxs = fold_idxs[i]
@@ -115,15 +112,12 @@ def main():
         train_set_idxs = np.random.choice(test_set_idxs, size=int(len(test_set_idxs)*(args.fewshot_ratio)), replace=False)
         test_set_idxs = np.array([x for x in test_set_idxs if x not in train_set_idxs])
 
-        # test_set_idxs = np.random.choice(test_set_idxs, size=int(len(test_set_idxs)*(0.05/0.9)), replace=False)
-
         many_shot_prefix = None
         if args.method == 'icl':
             many_shot_prefix = fewshot_eqipped(df.iloc[train_set_idxs])
 
         # save train and test splits
         df.iloc[train_set_idxs].to_csv(f"{experiments_path}/fold_{i}_train_seed_{args.seed}.csv", index=False)
-
         df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
         df.iloc[test_set_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
@@ -132,12 +126,12 @@ def main():
 
         top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
         # print("Heads intervened: ", sorted(top_heads))
-    
-        interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
+
+        tuning_activations = np.array([token_ac for ans_ac in separated_head_wise_activations for token_ac in ans_ac])
+        interventions = get_cluster_probe_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
 
         # sample_directions
         sample_directions = head_wise_activation_directions[test_set_idxs]
-
 
         if args.probe_type == 'prob':
             def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
@@ -183,8 +177,8 @@ def main():
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
             device=args.device, 
-            interventions=interventions if not args.pure else {},
-            intervention_fn=lt_modulated_cluster_probe_add if not args.pure else None,
+            interventions=interventions, 
+            intervention_fn=lt_modulated_cluster_probe_add, 
             judge_name=args.judge_name, 
             info_name=args.info_name,
             use_cluster=False,

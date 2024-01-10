@@ -29,6 +29,7 @@ def main():
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0)
+    parser.add_argument('--use_center_of_mass', action='store_true', help='use center of mass direction', default=False)
     parser.add_argument('--probe_type', type=str, default='prob')
     parser.add_argument('--pure', action='store_true', default=False)
     parser.add_argument('--method', type=str, default='icl')
@@ -127,52 +128,33 @@ def main():
         df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
         df.iloc[test_set_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
-        # get direction of cluster center
-        cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
+        # get directions
+        if args.use_center_of_mass:
+            print('use mean direction')
+            com_directions = get_com_directions(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels)
+        else:
+            com_directions = None
 
-        top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
-        # print("Heads intervened: ", sorted(top_heads))
+        top_heads, probes = get_top_heads(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, args.use_random_dir)
+
+        print("Heads intervened: ", sorted(top_heads))
     
-        interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
+        interventions = get_interventions_dict(top_heads, probes, head_wise_activations, num_heads, args.use_center_of_mass, args.use_random_dir, com_directions)
 
         # sample_directions
         sample_directions = head_wise_activation_directions[test_set_idxs]
 
 
-        if args.probe_type == 'prob':
-            def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
-                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
-                for head, direction, proj_val_std, probe in interventions[layer_name]:
-                    direction_to_add = torch.tensor(direction).to(args.device)
-                    if args.probe_base_weight == -1:
-                        weight = 1
-                    else:
-                        weight = 1 + args.probe_base_weight - probe.predict_proba(head_output[:, -1, head, :].detach().cpu().numpy())[0][1]
-
-                    if start_edit_location == 'lt': 
-                        head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    else: 
-                        head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    
-                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
-                return head_output
-        else:
-            def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
-                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
-                for head, direction, proj_val_std, probe in interventions[layer_name]:
-                    direction_to_add = torch.tensor(direction).to(args.device)
-                    if args.probe_base_weight == -1:
-                        weight = 1
-                    else:
-                        weight = 1 + args.probe_base_weight - probe.predict(head_output[:, -1, head, :].detach().cpu().numpy())[0]
-
-                    if start_edit_location == 'lt': 
-                        head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    else: 
-                        head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    
-                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
-                return head_output
+        def lt_modulated_vector_add(head_output, layer_name, start_edit_location='lt'): 
+            head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
+            for head, direction, proj_val_std in interventions[layer_name]:
+                direction_to_add = torch.tensor(direction).to(args.device)
+                if start_edit_location == 'lt': 
+                    head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add
+                else: 
+                    head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add
+            head_output = rearrange(head_output, 'b s h d -> b s (h d)')
+            return head_output
 
         filename = f'{args.model_name}_seed_{args.seed}_top_{args.num_heads}_heads_alpha_{int(args.alpha)}_fold_{i}'
                     
@@ -184,7 +166,7 @@ def main():
             f'{experiments_path}/summary_{filename}.csv', 
             device=args.device, 
             interventions=interventions if not args.pure else {},
-            intervention_fn=lt_modulated_cluster_probe_add if not args.pure else None,
+            intervention_fn=lt_modulated_vector_add if not args.pure else None,
             judge_name=args.judge_name, 
             info_name=args.info_name,
             use_cluster=False,
