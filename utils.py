@@ -30,12 +30,11 @@ import openai
 from truthfulqa.configs import BEST_COL, ANSWER_COL, INCORRECT_COL
 
 ENGINE_MAP = {
-    # 'llama_7B': 'decapoda-research/llama-7b-hf',
     'llama_7B': 'yahma/llama-7b-hf',
+    'llama2_7B': 'meta-llama/Llama-2-7b-hf', 
+    'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
     'alpaca_7B': 'circulus/alpaca-7b', 
-    'vicuna_7B': 'AlekseyKorshuk/vicuna-7b', 
-    # 'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
-    'llama2_chat_7B': 'daryl149/llama-2-7b-chat-hf',
+    'vicuna_7B': 'AlekseyKorshuk/vicuna-7b'
 }
 
 
@@ -847,7 +846,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
                 print(err)
 
         # llama
-        if mdl in ['llama_7B', 'alpaca_7B', 'vicuna_7B', 'llama2_chat_7B']: 
+        if mdl in ['llama_7B', 'alpaca_7B', 'vicuna_7B', 'llama2_7B', 'llama2_chat_7B']: 
 
             assert models[mdl] is not None, 'must provide llama model'
             llama_model = models[mdl]

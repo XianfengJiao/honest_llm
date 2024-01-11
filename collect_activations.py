@@ -20,19 +20,18 @@ def main():
     """
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', type=str, default='llama_7B')
+    parser.add_argument('--model_name', type=str, default='llama2_7B')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2')
-    parser.add_argument('--collect', type=str, default='all')
+    parser.add_argument('--collect', type=str, default='all_100')
     parser.add_argument('--cut_type', type=str, default='')
-    parser.add_argument('--device', type=int, default=0)
+    parser.add_argument('--device', type=int, default=3)
     args = parser.parse_args()
     HF_NAMES = {
-        # 'llama_7B': 'decapoda-research/llama-7b-hf',
         'llama_7B': 'yahma/llama-7b-hf',
+        'llama2_7B': 'meta-llama/Llama-2-7b-hf', 
+        'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
         'alpaca_7B': 'circulus/alpaca-7b', 
-        'vicuna_7B': 'AlekseyKorshuk/vicuna-7b', 
-        # 'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
-        'llama2_chat_7B': 'daryl149/llama-2-7b-chat-hf',
+        'vicuna_7B': 'AlekseyKorshuk/vicuna-7b'
     }
 
     MODEL = HF_NAMES[args.model_name]
@@ -40,12 +39,13 @@ def main():
     tokenizer = llama.LLaMATokenizer.from_pretrained(MODEL)
     model = llama.LLaMAForCausalLM.from_pretrained(MODEL, low_cpu_mem_usage=True, torch_dtype=torch.float16, device_map=args.device)
     device = args.device
-    # device = "cuda"
     r = model.to(device)
 
-    if args.dataset_name == "tqa_mc2": 
-        dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
-        ref_df = pd.read_csv('/home/jxf/code/honest_llm/TruthfulQA/data/v0/TruthfulQA.csv')
+    if args.dataset_name == "tqa_mc2":
+        url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
+        dataset = load_dataset('parquet', data_files=url)['train'] 
+        # dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
+        ref_df = pd.read_csv('/data/wtl/code/honest_llm/TruthfulQA/data/v0/TruthfulQA.csv')
         if 'all' in args.collect:
             formatter = tokenized_tqa_all
         elif 'stimulus' in args.collect:  # 加入stimulus模板
@@ -99,22 +99,26 @@ def main():
         elif args.collect == 'all':
             all_layer_wise_activations.append(layer_wise_activations)
             all_head_wise_activations.append(head_wise_activations)
-        else:
+        elif args.collect == 'all_100':
+            print("collect type: all_100")
             all_layer_wise_activations.append(layer_wise_activations[:, -1, :])
             all_head_wise_activations.append(head_wise_activations[:, -1, :])
 
+    print("saving categories")
+    pickle.dump(categories, open(f'/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_categories.pkl', 'wb'))
+
     print("Saving labels")
-    np.save(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy', labels)
+    np.save(f'/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy', labels)
     
     print("Saving tokens")
-    pickle.dump(tokens, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_tokens.pkl', 'wb'))
+    pickle.dump(tokens, open(f'/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_tokens.pkl', 'wb'))
 
     print("Saving layer wise activations")
-    pickle.dump(all_layer_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_layer_wise.pkl', 'wb'))
+    pickle.dump(all_layer_wise_activations, open(f'/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_layer_wise.pkl', 'wb'))
     # np.save(f'features/all_activations/{args.model_name}_{args.dataset_name}_layer_wise.npy', all_layer_wise_activations)
     
     print("Saving head wise activations")
-    pickle.dump(all_head_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise.pkl', 'wb'))
+    pickle.dump(all_head_wise_activations, open(f'/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise.pkl', 'wb'))
     # np.save(f'features/all_activations/{args.model_name}_{args.dataset_name}_head_wise.npy', all_head_wise_activations)
 
     print("All saved successfully")

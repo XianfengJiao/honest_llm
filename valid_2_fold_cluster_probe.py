@@ -18,7 +18,10 @@ from utils import *
 
 HF_NAMES = {
     'llama_7B': 'yahma/llama-7b-hf',
+    'llama2_7B': 'meta-llama/Llama-2-7b-hf', 
     'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
+    'alpaca_7B': 'circulus/alpaca-7b', 
+    'vicuna_7B': 'AlekseyKorshuk/vicuna-7b'
 }
 
 
@@ -29,21 +32,24 @@ def main():
     parser.add_argument('--num_heads', type=int, default=24, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=5, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
-    parser.add_argument('--probe_type', type=str, default='01')
+    parser.add_argument('--probe_type', type=str, default='prob')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
-    parser.add_argument('--device', type=int, default=2, help='device')
+    parser.add_argument('--device', type=int, default=7, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
     parser.add_argument('--judge_name', type=str, required=False)
     parser.add_argument('--info_name', type=str, required=False)
+    parser.add_argument('--pure', action='store_true', default=False)
     args = parser.parse_args()
 
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
-
-    experiment_name = f'cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
-    experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
+    if args.pure:
+        experiment_name = f'{args.model_name}_pure'
+    else:
+        experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
+    experiments_path = f'/data/wtl/honest_llm/cluster_probe_experiments/version/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
 
@@ -54,7 +60,7 @@ def main():
 
     # load dataframe and activations direcitons
     df = pd.read_csv('./TruthfulQA/data/v0/TruthfulQA.csv')
-    head_wise_activation_directions = np.load('/data/wtl/honest_llm/directions/head_wise_activation_directions.npy')
+    head_wise_activation_directions = np.load(f'/data/wtl/honest_llm/directions/{args.model_name}_head_wise_activation_directions.npy')
     # norms = np.linalg.norm(head_wise_activation_directions, axis=-1, keepdims=True)
     # # 避免除以零的情况
     # norms[norms == 0] = np.inf  # 将为0范数设置为无穷大，这样除以无穷大会得到0
@@ -87,8 +93,8 @@ def main():
     num_heads = model.config.num_attention_heads
 
     # load activations 
-    head_wise_activations = pkl.load(open('/data/jxf/activations/llama_7B_tqa_mc2_all_100_head_wise.pkl', 'rb'))
-    labels = np.load('/data/jxf/activations/llama_7B_tqa_mc2_all_labels.npy')
+    head_wise_activations = pkl.load(open(f'/data/wtl/honest_llm/activations/{args.model_name}_tqa_mc2_all_100_head_wise.pkl', 'rb'))
+    labels = np.load(f'/data/wtl/honest_llm/activations/{args.model_name}_tqa_mc2_all_100_labels.npy')
     head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
     # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
@@ -112,13 +118,14 @@ def main():
         df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
         df.iloc[test_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
-        # get direction of cluster center, return (num_layers, num_heads, num_cluster, index)
-        cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
+        if not args.pure:
+            # get direction of cluster center, return (num_layers, num_heads, num_cluster, index)
+            cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
 
-        top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
-        # print("Heads intervened: ", sorted(top_heads))
-    
-        interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
+            top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
+            # print("Heads intervened: ", sorted(top_heads))
+        
+            interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
 
         # sample_directions
         sample_directions = head_wise_activation_directions[test_idxs]
@@ -168,8 +175,10 @@ def main():
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
             device=args.device, 
-            interventions=interventions, 
-            intervention_fn=lt_modulated_cluster_probe_add, 
+            interventions=interventions if not args.pure else {}, 
+            intervention_fn=lt_modulated_cluster_probe_add if not args.pure else None, 
+            # interventions=interventions, 
+            # intervention_fn=lt_modulated_cluster_probe_add, 
             judge_name=args.judge_name, 
             info_name=args.info_name,
             use_cluster=False,
@@ -183,16 +192,14 @@ def main():
         results.append(curr_fold_results)
     
     results = np.array(results)
-    final = results.mean(axis=0)
+    final = results.mean(axis=0) 
 
-    print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
+    print(f'MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, BLEURT acc: {final[0]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
 
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
 if __name__ == "__main__":
-    # main()
-    model_name = 'circulus/alpaca-7b'
-    # model_name = 'AlekseyKorshuk/vicuna-7b'
-    tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
-    model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16)
+    main()
+    
+    
     

@@ -1,68 +1,0 @@
-Found cached dataset truthful_qa (/data/wtl/hf_cache/truthful_qa/multiple_choice/1.1.0/63502f6bc6ee493830ce0843991b028d0ab568d221896b2ee3b8a5dfdaa9d7f4)
-Running:
-valid_2_fold.py
-
-Namespace(activations_dataset='tqa_gen_end_q', alpha=15, choose_heads_by_pca=False, collect='all', cur_rate=1.0, cut_random=False, cut_type='', dataset_name='tqa_mc2', device=0, direction_type='pca', info_name=None, judge_name=None, model_name='llama_7B', n_components=1, num_fold=2, num_heads=48, pure=False, random_lower_bound=0.5, seed=42, stimulus_pos=6, use_center_of_mass=False, use_honest=False, use_random_dir=False, val_ratio=0.2)
-  0%|          | 0/1 [00:00<?, ?it/s]100%|██████████| 1/1 [00:00<00:00, 419.89it/s]
-The tokenizer class you load from this checkpoint is not the same type as the class this function is called from. It may result in unexpected tokenization. 
-The tokenizer class you load from this checkpoint is 'LlamaTokenizer'. 
-The class this function is called from is 'LLaMATokenizer'.
-normalizer.cc(51) LOG(INFO) precompiled_charsmap is empty. use identity normalization.
-Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:05<00:05,  5.01s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.09s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.38s/it]
-Found cached dataset truthful_qa (/data/wtl/hf_cache/truthful_qa/multiple_choice/1.1.0/63502f6bc6ee493830ce0843991b028d0ab568d221896b2ee3b8a5dfdaa9d7f4)
-  0%|          | 0/1 [00:00<?, ?it/s]100%|██████████| 1/1 [00:00<00:00, 498.55it/s]
-experiments_path: /data/wtl/honest_llm/validation/llama_7B_tqa_mc2_all_100
-Running fold 0
-train probes:   0%|          | 0/32 [00:00<?, ?it/s]train probes:   3%|▎         | 1/32 [00:03<01:38,  3.18s/it]train probes:   6%|▋         | 2/32 [00:03<00:47,  1.58s/it]train probes:   9%|▉         | 3/32 [00:07<01:20,  2.76s/it]train probes:  12%|█▎        | 4/32 [00:08<00:52,  1.86s/it]train probes:  16%|█▌        | 5/32 [00:08<00:37,  1.37s/it]train probes:  19%|█▉        | 6/32 [00:13<01:01,  2.36s/it]train probes:  22%|██▏       | 7/32 [00:17<01:19,  3.17s/it]train probes:  25%|██▌       | 8/32 [00:18<00:55,  2.32s/it]train probes:  28%|██▊       | 9/32 [00:21<00:56,  2.46s/it]train probes:  31%|███▏      | 10/32 [00:23<00:52,  2.39s/it]train probes:  34%|███▍      | 11/32 [00:24<00:38,  1.84s/it]train probes:  38%|███▊      | 12/32 [00:24<00:29,  1.46s/it]train probes:  41%|████      | 13/32 [00:25<00:22,  1.20s/it]train probes:  44%|████▍     | 14/32 [00:25<00:19,  1.07s/it]train probes:  47%|████▋     | 15/32 [00:28<00:25,  1.50s/it]train probes:  50%|█████     | 16/32 [00:29<00:20,  1.29s/it]train probes:  53%|█████▎    | 17/32 [00:29<00:16,  1.09s/it]train probes:  56%|█████▋    | 18/32 [00:31<00:16,  1.18s/it]train probes:  59%|█████▉    | 19/32 [00:32<00:13,  1.04s/it]train probes:  62%|██████▎   | 20/32 [00:32<00:11,  1.08it/s]train probes:  66%|██████▌   | 21/32 [00:36<00:20,  1.84s/it]train probes:  69%|██████▉   | 22/32 [00:37<00:14,  1.49s/it]train probes:  72%|███████▏  | 23/32 [00:37<00:11,  1.25s/it]train probes:  75%|███████▌  | 24/32 [00:42<00:17,  2.13s/it]train probes:  78%|███████▊  | 25/32 [00:42<00:11,  1.68s/it]train probes:  81%|████████▏ | 26/32 [00:45<00:11,  1.90s/it]train probes:  84%|████████▍ | 27/32 [00:47<00:09,  1.97s/it]train probes:  88%|████████▊ | 28/32 [00:52<00:11,  2.80s/it]train probes:  91%|█████████ | 29/32 [00:52<00:06,  2.15s/it]train probes:  94%|█████████▍| 30/32 [00:53<00:03,  1.68s/it]train probes:  94%|█████████▍| 30/32 [00:57<00:03,  1.91s/it]
-Traceback (most recent call last):
-  File "valid_2_fold.py", line 255, in <module>
-    main()
-  File "valid_2_fold.py", line 206, in main
-    top_heads, probes = get_top_heads_and_save_accs(experiments_path, i, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, args.use_random_dir)
-  File "valid_2_fold.py", line 27, in get_top_heads_and_save_accs
-    probes, all_head_accs_np = train_probes(seed, train_idxs, val_idxs, separated_activations, separated_labels, num_layers=num_layers, num_heads=num_heads)
-  File "/home/wtl/code/honest_llm/utils.py", line 990, in train_probes
-    clf = LogisticRegression(random_state=seed, max_iter=1000).fit(X_train, y_train)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/sklearn/linear_model/_logistic.py", line 1291, in fit
-    fold_coefs_ = Parallel(n_jobs=self.n_jobs, verbose=self.verbose, prefer=prefer)(
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/sklearn/utils/parallel.py", line 63, in __call__
-    return super().__call__(iterable_with_config)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/joblib/parallel.py", line 1085, in __call__
-    if self.dispatch_one_batch(iterator):
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/joblib/parallel.py", line 901, in dispatch_one_batch
-    self._dispatch(tasks)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/joblib/parallel.py", line 819, in _dispatch
-    job = self._backend.apply_async(batch, callback=cb)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/joblib/_parallel_backends.py", line 208, in apply_async
-    result = ImmediateResult(func)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/joblib/_parallel_backends.py", line 597, in __init__
-    self.results = batch()
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/joblib/parallel.py", line 288, in __call__
-    return [func(*args, **kwargs)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/joblib/parallel.py", line 288, in <listcomp>
-    return [func(*args, **kwargs)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/sklearn/utils/parallel.py", line 123, in __call__
-    return self.function(*args, **kwargs)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/sklearn/linear_model/_logistic.py", line 450, in _logistic_regression_path
-    opt_res = optimize.minimize(
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/scipy/optimize/_minimize.py", line 696, in minimize
-    res = _minimize_lbfgsb(fun, x0, args, jac, bounds,
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/scipy/optimize/_lbfgsb_py.py", line 359, in _minimize_lbfgsb
-    f, g = func_and_grad(x)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/scipy/optimize/_differentiable_functions.py", line 285, in fun_and_grad
-    self._update_fun()
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/scipy/optimize/_differentiable_functions.py", line 251, in _update_fun
-    self._update_fun_impl()
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/scipy/optimize/_differentiable_functions.py", line 155, in update_fun
-    self.f = fun_wrapped(self.x)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/scipy/optimize/_differentiable_functions.py", line 137, in fun_wrapped
-    fx = fun(np.copy(x), *args)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/scipy/optimize/_optimize.py", line 76, in __call__
-    self._compute_if_needed(x, *args)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/scipy/optimize/_optimize.py", line 70, in _compute_if_needed
-    fg = self.fun(x, *args)
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/sklearn/linear_model/_linear_loss.py", line 278, in loss_gradient
-    loss, grad_pointwise = self.base_loss.loss_gradient(
-  File "/data/wtl/anaconda3/envs/iti/lib/python3.8/site-packages/sklearn/_loss/loss.py", line 257, in loss_gradient
-    return self.closs.loss_gradient(
-KeyboardInterrupt
