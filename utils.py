@@ -963,6 +963,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
 
     # save results
     results.to_csv(summary_path, index=False)
+    print('results: \n', results)
     
     return results
 

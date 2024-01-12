@@ -28,7 +28,7 @@ def main():
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
-    parser.add_argument('--cut_rate', type=float, default=0.75)
+    parser.add_argument('--cut_rate', type=float, default=0.9)
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
     parser.add_argument('--probe_type', type=str, default='prob')
     parser.add_argument('--method', type=str, default='icl')
@@ -38,8 +38,8 @@ def main():
     parser.add_argument('--device', type=int, default=3, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
-    parser.add_argument('--judge_name', type=str, required=False)
-    parser.add_argument('--info_name', type=str, required=False)
+    parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
+    parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
     args = parser.parse_args()
 
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
@@ -111,6 +111,7 @@ def main():
 
         train_set_idxs = np.random.choice(test_set_idxs, size=int(len(test_set_idxs)*(args.fewshot_ratio)), replace=False)
         test_set_idxs = np.array([x for x in test_set_idxs if x not in train_set_idxs])
+        # test_set_idxs = val_set_idxs
 
         many_shot_prefix = None
         if args.method == 'icl':
@@ -172,7 +173,7 @@ def main():
                     
         curr_fold_results = alt_tqa_evaluate(
             {args.model_name: model}, 
-            ['mc','bleu','bleurt'], 
+            ['mc','bleu','bleurt', 'judge', 'info'], 
             f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
@@ -187,15 +188,15 @@ def main():
         )
 
         print(f"FOLD {i}")
-        print(curr_fold_results)
-
+    
         curr_fold_results = curr_fold_results.to_numpy()[0].astype(float)
         results.append(curr_fold_results)
+        print(curr_fold_results)
     
     results = np.array(results)
     final = results.mean(axis=0)
 
-    print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
+    print(f'True*Info Score: {final[1]*final[2]}, True Score: {final[2]}, Info Score: {final[1]}, BLEURT acc: {final[0]:.4f}, MC1: {final[3]:.4f}, MC2: {final[4]:.4f}, bleu acc: {final[5]:.4f}, rouge1 acc: {final[6]:.4f}, CE Loss: {final[7]}, KL wrt Original: {final[8]}')
 
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
