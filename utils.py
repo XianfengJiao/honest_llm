@@ -25,7 +25,8 @@ from sklearn.cluster import KMeans
 from itertools import islice
 import json
 
-from truthfulqa import utilities, models, metrics
+from TruthfulQA.truthfulqa import metrics
+from truthfulqa import utilities, models
 import openai
 from truthfulqa.configs import BEST_COL, ANSWER_COL, INCORRECT_COL
 
