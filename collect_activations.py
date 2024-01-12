@@ -45,6 +45,8 @@ def main():
 
     if args.dataset_name == "tqa_mc2": 
         dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
+        url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
+        dataset = load_dataset('parquet', data_files=url)['train']
         ref_df = pd.read_csv('/home/jxf/code/honest_llm/TruthfulQA/data/v0/TruthfulQA.csv')
         if 'all' in args.collect:
             formatter = tokenized_tqa_all
