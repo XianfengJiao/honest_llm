@@ -48,7 +48,7 @@ def main():
     if args.pure:
         experiment_name = f'{args.model_name}_pure'
     else:
-        experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
+        experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}'
     experiments_path = f'/data/wtl/honest_llm/cluster_probe_experiments/version/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
@@ -192,9 +192,9 @@ def main():
         results.append(curr_fold_results)
     
     results = np.array(results)
-    final = results.mean(axis=0) 
+    final = results.mean(axis=0)
 
-    print(f'MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, BLEURT acc: {final[0]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
+    print(f'MC1: {final[1]:.3f}, MC2: {final[2]:.3f}, BLEURT acc: {final[0]:.3f}, bleu acc: {final[3]:.3f}, rouge1 acc: {final[4]:.3f}, CE Loss: {final[5]:.3f}, KL wrt Original: {final[6]:.3f}')
 
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 

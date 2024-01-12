@@ -29,7 +29,10 @@ from utils import *
 
 HF_NAMES = {
     'llama_7B': 'yahma/llama-7b-hf',
+    'llama2_7B': 'meta-llama/Llama-2-7b-hf', 
     'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
+    'alpaca_7B': 'circulus/alpaca-7b', 
+    'vicuna_7B': 'AlekseyKorshuk/vicuna-7b'
 }
 
 
@@ -92,7 +95,7 @@ def run_end2end_GPT3(model_key, tag, engine, frame, info=False):
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
-    parser.add_argument('--valid_dir', type=str, default='/data/jxf/honest_llm/cluster_experiments/cluster_probe_num_heads24_alpha15.0_n_clusters3_baseW0.0_prob')
+    parser.add_argument('--valid_dir', type=str, default='/data/wtl/honest_llm/cluster_probe_experiments/version/llama2_7B_pure')
     parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
     parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
     args = parser.parse_args()
