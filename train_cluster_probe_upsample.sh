@@ -11,9 +11,9 @@ cut_rates=(0.9 0.95)
 for c in "${cut_rates[@]}"; do
     for a in "${alpha[@]}"; do
         for num_head in "${num_heads[@]}"; do
-            for weight in "${probe_base_weights[@]}"; do
-                # 内循环遍历 n_clusters
-                for cluster in "${n_clusters[@]}"; do
+            for cluster in "${n_clusters[@]}"; do
+                for weight in "${probe_base_weights[@]}"; do
+
                     # 显示正在执行的命令
                     echo "Running: valid_2_fold_llama_7B_cluster${cluster}_probe_cut${c}_heads${num_head}_alpha${a}_baseW${weight//.}"
 
