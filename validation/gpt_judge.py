@@ -92,7 +92,7 @@ def run_end2end_GPT3(model_key, tag, engine, frame, info=False):
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
-    parser.add_argument('--valid_dir', type=str, default='/data/jxf/honest_llm/cluster_experiments/fewshot_cluster_probe_upsample_num_heads24_alpha10.0_n_clusters3_baseW0.5_cut0.9_prob_icl')
+    parser.add_argument('--valid_dir', type=str, default='/data/jxf/honest_llm/validation/llama_7B_tqa_mc2_all_100_pca')
     parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
     parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
     args = parser.parse_args()

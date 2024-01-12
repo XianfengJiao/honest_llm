@@ -2,9 +2,9 @@
 
 
 alpha=(15)
-probe_base_weights=(0.1 0.2 0.3)
+probe_base_weights=(0.4 0.5 0.6 0.7)
 n_clusters=(2)
-num_heads=(24)
+num_heads=(32)
 cut_rates=(0.9)
 
 for c in "${cut_rates[@]}"; do
