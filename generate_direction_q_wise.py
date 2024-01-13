@@ -13,16 +13,34 @@ from sklearn.cluster import KMeans
 import seaborn as sns
 import requests
 
+import sys
+sys.path.append('../')
+from utils import *
+
+HF_NAMES = {
+        # 'llama_7B': 'decapoda-research/llama-7b-hf',
+        'llama_7B': 'yahma/llama-7b-hf',
+        'alpaca_7B': 'circulus/alpaca-7b', 
+        'vicuna_7B': 'AlekseyKorshuk/vicuna-7b', 
+        # 'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
+        'llama2_chat_7B': 'daryl149/llama-2-7b-chat-hf',
+        'llama_13B': 'luodian/llama-13b-hf',
+        'llama_33B': 'alexl83/LLaMA-33B-HF',
+    }
+
 
 # 'llama_7B', 'llama2_7B', 'llama2_chat_7B', 'alpaca_7B', 'vicuna_7B'
-model_name = 'vicuna_7B'
+model_name = 'llama_33B'
+model_name_hf = HF_NAMES[model_name]
 
-head_wise_activations = pkl.load(open(f'/data/wtl/honest_llm/activations/{model_name}_tqa_mc2_all_100_head_wise.pkl', 'rb'))
-labels = np.load(f'/data/wtl/honest_llm/activations/{model_name}_tqa_mc2_all_100_labels.npy')
-activation_categories = pkl.load(open(f'/data/wtl/honest_llm/activations/{model_name}_tqa_mc2_all_100_categories.pkl', 'rb'))
-tokens = pkl.load(open(f'/data/wtl/honest_llm/activations/{model_name}_tqa_mc2_all_100_tokens.pkl', 'rb'))
-num_heads = 32
-head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
+head_wise_activations = pkl.load(open(f'/data/jxf/activations/{model_name}_tqa_mc2_all_100_head_wise.pkl', 'rb'))
+labels = np.load(f'/data/jxf/activations/{model_name}_tqa_mc2_all_100_labels.npy')
+activation_categories = pkl.load(open(f'/data/jxf/activations/{model_name}_tqa_mc2_all_100_categories.pkl', 'rb'))
+tokens = pkl.load(open(f'/data/jxf/activations/{model_name}_tqa_mc2_all_100_tokens.pkl', 'rb'))
+model = llama.LLaMAForCausalLM.from_pretrained(model_name_hf, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map="auto")
+
+num_heads = model.config.num_attention_heads
+head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', d = num_heads)
 
 
 def get_separated_activations(labels, head_wise_activations, categories): 

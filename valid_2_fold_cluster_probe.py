@@ -20,6 +20,7 @@ HF_NAMES = {
     'llama_7B': 'yahma/llama-7b-hf',
     'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf',
     'llama_13B': 'luodian/llama-13b-hf',
+    'llama_33B': 'alexl83/LLaMA-33B-HF',
 }
 
 
@@ -34,11 +35,11 @@ def main():
     parser.add_argument('--probe_type', type=str, default='01')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
-    parser.add_argument('--device', type=int, default=2, help='device')
+    parser.add_argument('--device', type=int, default=0, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
-    parser.add_argument('--judge_name', type=str, required=False)
-    parser.add_argument('--info_name', type=str, required=False)
+    parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
+    parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
     args = parser.parse_args()
 
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
@@ -46,7 +47,7 @@ def main():
     if args.pure:
         experiment_name = f'valid_2_fold_{args.model_name}_pure'
     else:
-        experiment_name = f'cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
+        experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
     experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
@@ -58,7 +59,7 @@ def main():
 
     # load dataframe and activations direcitons
     df = pd.read_csv('./TruthfulQA/data/v0/TruthfulQA.csv')
-    head_wise_activation_directions = np.load('/data/jxf/honest_llm/directions/head_wise_activation_directions.npy')
+    head_wise_activation_directions = np.load(f'/data/jxf/honest_llm/directions/{args.model_name}_head_wise_activation_directions.npy')
     # norms = np.linalg.norm(head_wise_activation_directions, axis=-1, keepdims=True)
     # # 避免除以零的情况
     # norms[norms == 0] = np.inf  # 将为0范数设置为无穷大，这样除以无穷大会得到0
@@ -91,8 +92,8 @@ def main():
     num_heads = model.config.num_attention_heads
 
     # load activations 
-    head_wise_activations = pkl.load(open('/data/jxf/activations/llama_7B_tqa_mc2_all_100_head_wise.pkl', 'rb'))
-    labels = np.load('/data/jxf/activations/llama_7B_tqa_mc2_all_labels.npy')
+    head_wise_activations = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_100_head_wise.pkl', 'rb'))
+    labels = np.load(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_100_labels.npy')
     head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
     # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
@@ -132,7 +133,7 @@ def main():
             def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
                 head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
                 for head, direction, proj_val_std, probe in interventions[layer_name]:
-                    direction_to_add = torch.tensor(direction).to(args.device)
+                    direction_to_add = torch.tensor(direction).to(head_output.device.index)
                     if args.probe_base_weight == -1:
                         weight = 1
                     else:
@@ -149,7 +150,7 @@ def main():
             def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
                 head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
                 for head, direction, proj_val_std, probe in interventions[layer_name]:
-                    direction_to_add = torch.tensor(direction).to(args.device)
+                    direction_to_add = torch.tensor(direction).to(head_output.device.index)
                     if args.probe_base_weight == -1:
                         weight = 1
                     else:
@@ -167,7 +168,7 @@ def main():
                     
         curr_fold_results = alt_tqa_evaluate(
             {args.model_name: model}, 
-            ['mc','bleu','bleurt'], 
+            ['mc','bleu','bleurt', 'judge', 'info'], 
             f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
@@ -189,8 +190,8 @@ def main():
     results = np.array(results)
     final = results.mean(axis=0)
 
-    print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
-
+    # print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
+    print(f'True*Info Score: {final[1]*final[2]}, True Score: {final[2]}, Info Score: {final[1]}, BLEURT acc: {final[0]:.4f}, MC1: {final[3]:.4f}, MC2: {final[4]:.4f}, bleu acc: {final[5]:.4f}, rouge1 acc: {final[6]:.4f}, CE Loss: {final[7]}, KL wrt Original: {final[8]}')
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
 if __name__ == "__main__":

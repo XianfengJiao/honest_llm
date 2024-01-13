@@ -9,6 +9,7 @@ import llama
 import pickle
 import argparse
 import random
+import gc
 from functools import partial
 
 
@@ -100,11 +101,12 @@ def main():
             all_layer_wise_activations.append(layer_wise_activations[:, -1, :])
             all_head_wise_activations.append(head_wise_activations[:, -1, :])
         elif args.collect == 'all':
-            all_layer_wise_activations.append(layer_wise_activations[:, -1, :])
-            all_head_wise_activations.append(head_wise_activations[:, -1, :])
+            # all_layer_wise_activations.append(layer_wise_activations)
+            all_head_wise_activations.append(head_wise_activations)
         else:
-            all_layer_wise_activations.append(layer_wise_activations[:, -1, :])
+            # all_layer_wise_activations.append(layer_wise_activations[:, -1, :])
             all_head_wise_activations.append(head_wise_activations[:, -1, :])
+        gc.collect()
 
     print("Saving labels")
     np.save(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy', labels)
@@ -113,7 +115,7 @@ def main():
     pickle.dump(tokens, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_tokens.pkl', 'wb'))
 
     print("Saving layer wise activations")
-    pickle.dump(all_layer_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_layer_wise.pkl', 'wb'))
+    # pickle.dump(all_layer_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_layer_wise.pkl', 'wb'))
     # np.save(f'features/all_activations/{args.model_name}_{args.dataset_name}_layer_wise.npy', all_layer_wise_activations)
     
     print("Saving head wise activations")
