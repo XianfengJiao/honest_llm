@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='llama_7B')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2')
-    parser.add_argument('--collect', type=str, default='all')
+    parser.add_argument('--collect', type=str, default='all_100')
     parser.add_argument('--cut_type', type=str, default='')
     parser.add_argument('--device', type=int, default=0)
     args = parser.parse_args()
@@ -33,21 +33,22 @@ def main():
         'vicuna_7B': 'AlekseyKorshuk/vicuna-7b', 
         # 'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
         'llama2_chat_7B': 'daryl149/llama-2-7b-chat-hf',
+        'llama_13B': 'luodian/llama-13b-hf',
+        'llama_33B': 'alexl83/LLaMA-33B-HF',
     }
 
     MODEL = HF_NAMES[args.model_name]
 
     tokenizer = llama.LLaMATokenizer.from_pretrained(MODEL)
-    model = llama.LLaMAForCausalLM.from_pretrained(MODEL, low_cpu_mem_usage=True, torch_dtype=torch.float16, device_map=args.device)
-    device = args.device
+    model = llama.LLaMAForCausalLM.from_pretrained(MODEL, low_cpu_mem_usage=True, torch_dtype=torch.float16, device_map="auto")
+    # device = args.device
     # device = "cuda"
-    r = model.to(device)
+    # r = model.to(device)
 
     if args.dataset_name == "tqa_mc2": 
-        dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
         url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
         dataset = load_dataset('parquet', data_files=url)['train']
-        ref_df = pd.read_csv('/home/jxf/code/honest_llm/TruthfulQA/data/v0/TruthfulQA.csv')
+        ref_df = pd.read_csv('./TruthfulQA/data/v0/TruthfulQA.csv')
         if 'all' in args.collect:
             formatter = tokenized_tqa_all
         elif 'stimulus' in args.collect:  # 加入stimulus模板
@@ -84,7 +85,7 @@ def main():
     for prompt, token in tqdm(zip(prompts, tokens), total=len(prompts)):
         # layer_wise_activations (33, 42, 4096) num_hidden_layers + last, seq_len, hidden_size
         # head_wise_activations (32, 42, 4096) num_hidden_layers, seq_len, hidden_size
-        layer_wise_activations, head_wise_activations, _ = get_llama_activations_bau(model, prompt, device)
+        layer_wise_activations, head_wise_activations, _ = get_llama_activations_bau(model, prompt, 'cuda')
         if 'ans' in args.collect:
             pos = get_ans_pos(token)
             layer_wise_activations = layer_wise_activations[:, pos:, :]
@@ -99,8 +100,8 @@ def main():
             all_layer_wise_activations.append(layer_wise_activations[:, -1, :])
             all_head_wise_activations.append(head_wise_activations[:, -1, :])
         elif args.collect == 'all':
-            all_layer_wise_activations.append(layer_wise_activations)
-            all_head_wise_activations.append(head_wise_activations)
+            all_layer_wise_activations.append(layer_wise_activations[:, -1, :])
+            all_head_wise_activations.append(head_wise_activations[:, -1, :])
         else:
             all_layer_wise_activations.append(layer_wise_activations[:, -1, :])
             all_head_wise_activations.append(head_wise_activations[:, -1, :])
