@@ -21,9 +21,9 @@ from utils import *
 
 
 # model_name = "yahma/llama-7b-hf"
-# model_name = "luodian/llama-13b-hf"
+model_name = "luodian/llama-13b-hf"
 # model_name = "alexl83/LLaMA-33B-HF"
-model_name = "Enoch/llama-65b-hf"
+# model_name = "Enoch/llama-65b-hf"
 
 tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
 model = llama.LLaMAForCausalLM.from_pretrained(model_name, force_download=True, resume_download=False)
