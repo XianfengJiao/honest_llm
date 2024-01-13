@@ -37,6 +37,8 @@ ENGINE_MAP = {
     'vicuna_7B': 'AlekseyKorshuk/vicuna-7b', 
     # 'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
     'llama2_chat_7B': 'daryl149/llama-2-7b-chat-hf',
+    'llama_13B': 'luodian/llama-13b-hf',
+    'llama_33B': 'alexl83/LLaMA-33B-HF',
 }
 
 
@@ -848,7 +850,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
                 print(err)
 
         # llama
-        if mdl in ['llama_7B', 'alpaca_7B', 'vicuna_7B', 'llama2_chat_7B']: 
+        if mdl in ['llama_7B', 'alpaca_7B', 'vicuna_7B', 'llama2_chat_7B', 'llama_13B', 'llama_33B', 'llama_65B']: 
 
             assert models[mdl] is not None, 'must provide llama model'
             llama_model = models[mdl]
