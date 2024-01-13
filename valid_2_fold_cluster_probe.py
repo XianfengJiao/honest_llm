@@ -18,7 +18,8 @@ from utils import *
 
 HF_NAMES = {
     'llama_7B': 'yahma/llama-7b-hf',
-    'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
+    'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf',
+    'llama_13B': 'luodian/llama-13b-hf',
 }
 
 
@@ -29,6 +30,7 @@ def main():
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
+    parser.add_argument('--pure', action='store_true', default=False)
     parser.add_argument('--probe_type', type=str, default='01')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
@@ -41,8 +43,10 @@ def main():
 
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
-
-    experiment_name = f'cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
+    if args.pure:
+        experiment_name = f'valid_2_fold_{args.model_name}_pure'
+    else:
+        experiment_name = f'cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
     experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
@@ -78,8 +82,8 @@ def main():
     # create model
     model_name = HF_NAMES[args.model_name]
     tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
-    model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16)
-    r = model.to(args.device)
+    model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map="auto")
+    # r = model.to(args.device)
     device = args.device
     
     # define number of layers and heads
@@ -167,9 +171,9 @@ def main():
             f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
-            device=args.device, 
-            interventions=interventions, 
-            intervention_fn=lt_modulated_cluster_probe_add, 
+            device="cuda", 
+            interventions=interventions if not args.pure else {},
+            intervention_fn=lt_modulated_cluster_probe_add if not args.pure else None, 
             judge_name=args.judge_name, 
             info_name=args.info_name,
             use_cluster=False,
