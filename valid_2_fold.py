@@ -19,7 +19,10 @@ from utils import train_probes
 
 HF_NAMES = {
     'llama_7B': 'yahma/llama-7b-hf',
+    'llama2_7B': 'meta-llama/Llama-2-7b-hf', 
     'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
+    'alpaca_7B': 'circulus/alpaca-7b', 
+    'vicuna_7B': 'AlekseyKorshuk/vicuna-7b'
 }
 
 def get_top_heads_and_save_accs(experiments_path, fold, train_idxs, val_idxs, separated_activations, separated_labels, num_layers, num_heads, seed, num_to_intervene, use_random_dir=False):
@@ -68,7 +71,7 @@ def main():
     parser.add_argument('--use_center_of_mass', action='store_true', help='use center of mass direction', default=False)
     parser.add_argument('--direction_type', type=str, default='pca')
     parser.add_argument('--use_random_dir', action='store_true', help='use random direction', default=False)
-    parser.add_argument('--device', type=int, default=0, help='device')
+    parser.add_argument('--device', type=int, default=2, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--judge_name', type=str, required=False)
     parser.add_argument('--info_name', type=str, required=False)
@@ -92,7 +95,7 @@ def main():
     elif args.collect == 'stimulus':
         experiment_name = f'{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_{str(args.stimulus_pos)}'
     else:
-        experiment_name = f'{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}'
+        experiment_name = f'{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_iti'
     if args.use_center_of_mass:
         experiment_name += f'_{args.direction_type}_alpha{int(args.alpha)}'
         if args.direction_type == 'pca':
@@ -110,9 +113,14 @@ def main():
     df = pd.read_csv('./TruthfulQA/data/v0/TruthfulQA.csv')
 
     # order csv by huggingface order, the order used to save activations
-    dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
+    url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
+    dataset = load_dataset('parquet', data_files=url)['train']
     golden_q_order = list(dataset["question"])
     df = df.sort_values(by='Question', key=lambda x: x.map({k: i for i, k in enumerate(golden_q_order)}))
+    
+    dictionary = {k: i for i, k in enumerate(golden_q_order)}
+    for q in df['Question']:
+        assert q in dictionary
     
     # get two folds using numpy
     fold_idxs = np.array_split(np.arange(len(df)), args.num_fold)
@@ -129,9 +137,9 @@ def main():
     num_heads = model.config.num_attention_heads
 
     # load activations 
-    tokens = pkl.load(open(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_tokens.pkl", 'rb'))
-    head_wise_activations = pkl.load(open(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise.pkl", 'rb'))
-    labels = np.load(f"/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy")
+    tokens = pkl.load(open(f"/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_tokens.pkl", 'rb'))
+    head_wise_activations = pkl.load(open(f"/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise.pkl", 'rb'))
+    labels = np.load(f"/data/wtl/honest_llm/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy")
 
     def find_ans_positions(tokens):
         positions = []
@@ -159,7 +167,7 @@ def main():
     # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
     separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
 
-    experiments_path = f'/data/wtl/honest_llm/validation/{experiment_name}'
+    experiments_path = f'/data/wtl/honest_llm/cluster_probe_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
 

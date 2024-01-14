@@ -1,8 +1,8 @@
 #!/bin/bash
 
-model_names=('llama_7B' 'llama2_7B' 'llama2_chat_7B' 'alpaca_7B' 'vicuna_7B')  # 添加模型名称数组
+# model_names=('llama_7B' 'llama2_7B' 'llama2_chat_7B' 'alpaca_7B' 'vicuna_7B')  # 添加模型名称数组
 
-
+model_names=('llama_33B' 'llama_65B')
 for model_name in "${model_names[@]}"; do
 
     # 构建并执行命令，添加 --model_name 参数

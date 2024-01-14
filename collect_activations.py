@@ -31,13 +31,18 @@ def main():
         'llama2_7B': 'meta-llama/Llama-2-7b-hf', 
         'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
         'alpaca_7B': 'circulus/alpaca-7b', 
-        'vicuna_7B': 'AlekseyKorshuk/vicuna-7b'
+        'vicuna_7B': 'AlekseyKorshuk/vicuna-7b',
+        'llama_13B': 'luodian/llama-13b-hf',
+        'llama_33B': 'alexl83/LLaMA-33B-HF',
+        'llama_65B': 'Enoch/llama-65b-hf'
     }
+    print('Running:\n{}\n'.format(' '.join(sys.argv)))
+    print(args)
 
     MODEL = HF_NAMES[args.model_name]
 
     tokenizer = llama.LLaMATokenizer.from_pretrained(MODEL)
-    model = llama.LLaMAForCausalLM.from_pretrained(MODEL, low_cpu_mem_usage=True, torch_dtype=torch.float16, device_map=args.device)
+    model = llama.LLaMAForCausalLM.from_pretrained(MODEL, low_cpu_mem_usage=True, torch_dtype=torch.float16, device_map='auto')
     device = args.device
     r = model.to(device)
 
