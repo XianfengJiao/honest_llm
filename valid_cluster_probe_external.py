@@ -195,7 +195,7 @@ def main():
             device=device, 
             interventions=interventions if not args.pure else {},
             intervention_fn=lt_modulated_cluster_probe_add if not args.pure else None, 
-            judge_name=args.judge_name, 
+            judge_name=args.judge_name,
             info_name=args.info_name,
             use_cluster=False,
             sample_directions = sample_directions
