@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
     parser.add_argument('--pure', action='store_true', default=False)
-    parser.add_argument('--probe_type', type=str, default='prob')
+    parser.add_argument('--probe_type', type=str, default='01')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
     parser.add_argument('--device', type=int, default=0, help='device')
@@ -168,7 +168,7 @@ def main():
                     
         curr_fold_results = alt_tqa_evaluate(
             {args.model_name: model}, 
-            ['mc','bleu','bleurt', 'judge', 'info'], 
+            ['mc', 'judge', 'info'], 
             f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
@@ -191,7 +191,7 @@ def main():
     final = results.mean(axis=0)
 
     # print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
-    print(f'True*Info Score: {final[1]*final[2]}, True Score: {final[2]}, Info Score: {final[1]}, BLEURT acc: {final[0]:.4f}, MC1: {final[3]:.4f}, MC2: {final[4]:.4f}, bleu acc: {final[5]:.4f}, rouge1 acc: {final[6]:.4f}, CE Loss: {final[7]}, KL wrt Original: {final[8]}')
+    print(f'True*Info Score: {final[0]*final[1]}, True Score: {final[1]}, Info Score: {final[0]}, MC1: {final[2]:.4f}, MC2: {final[3]:.4f}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
 if __name__ == "__main__":

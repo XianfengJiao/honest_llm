@@ -1,12 +1,14 @@
 #!/bin/bash
 
 # 定义 probe_base_weight 和 n_clusters 的数组
-alpha=(13 15)
+alpha=(10 17)
 probe_base_weights=(0)
 n_clusters=(3)
 num_heads=(24 32 48)
 
 # 外循环遍历 probe_base_weight
+
+export CUDA_VISIBLE_DEVICES=0,2,3,4
 
 for a in "${alpha[@]}"; do
     for num_head in "${num_heads[@]}"; do

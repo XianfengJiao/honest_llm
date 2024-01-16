@@ -23,17 +23,16 @@ HF_NAMES = {
     'llama_33B': 'alexl83/LLaMA-33B-HF',
 }
 
-
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
-    parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
+    parser.add_argument('--dataset_name', type=str, default='nq_open', help='feature bank for training probes')
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
     parser.add_argument('--pure', action='store_true', default=False)
     parser.add_argument('--probe_type', type=str, default='prob')
-    parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
+    parser.add_argument("--num_fold", type=int, default=1, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
     parser.add_argument('--device', type=int, default=0, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
@@ -68,10 +67,31 @@ def main():
 
     # order csv by huggingface order, the order used to save activations
     # dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
+    
     url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
     dataset = load_dataset('parquet', data_files=url)['train']
     golden_q_order = list(dataset["question"])
     df = df.sort_values(by='Question', key=lambda x: x.map({k: i for i, k in enumerate(golden_q_order)}))
+
+    if args.dataset_name == 'nq_open':
+        url = "https://huggingface.co/api/datasets/OamPatel/iti_nq_open_val/parquet/default/validation/0.parquet"
+        dataset = load_dataset('parquet', data_files=url)['train']
+        
+        df_external = pd.DataFrame(dataset)
+
+        df_external['Correct Answers'] = df_external['answer'].apply(lambda x: x[0])
+        df_external['Best Answer'] = df_external['answer'].apply(lambda x: x[0])
+        df_external['Incorrect Answers'] = df_external['false_answer']
+        df_external['Question'] = df_external['question']
+    elif args.dataset_name == 'trivia_qa':
+        url = "https://huggingface.co/api/datasets/OamPatel/iti_trivia_qa_val/parquet/default/validation/0.parquet"
+        dataset = load_dataset('parquet', data_files=url)['train']
+
+        df_external = pd.DataFrame(dataset)
+        df_external['Correct Answers'] = df_external['answer'].apply(lambda x: ';'.join(x['normalized_aliases']))
+        df_external['Best Answer'] = df_external['answer'].apply(lambda x: x['normalized_value'])
+        df_external['Incorrect Answers'] = df_external['false_answer']
+        df_external['Question'] = df_external['question']
 
     dictionary = {k: i for i, k in enumerate(golden_q_order)}
     for q in df['Question']:
@@ -83,9 +103,13 @@ def main():
     # create model
     model_name = HF_NAMES[args.model_name]
     tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
-    model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map="auto")
-    # r = model.to(args.device)
-    device = args.device
+    if args.model_name == 'llama_7B':
+        model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map=args.device)
+        r = model.to(args.device)
+        device = args.device
+    else:
+        model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map="auto")
+        device = 'cuda'
     
     # define number of layers and heads
     num_layers = model.config.num_hidden_layers
@@ -103,19 +127,15 @@ def main():
     results = []
     for i in range(args.num_fold):
 
-        train_idxs = np.concatenate([fold_idxs[j] for j in range(args.num_fold) if j != i])
-        test_idxs = fold_idxs[i]
-
+        all_idxs = fold_idxs[i]
+        val_set_idxs = np.random.choice(all_idxs, size=int(len(all_idxs)*(args.val_ratio)), replace=False)
+        train_set_idxs = np.array([x for x in all_idxs if x not in val_set_idxs])
         print(f"Running fold {i}")
-
-        # pick a val set using numpy
-        train_set_idxs = np.random.choice(train_idxs, size=int(len(train_idxs)*(1-args.val_ratio)), replace=False)
-        val_set_idxs = np.array([x for x in train_idxs if x not in train_set_idxs])
 
         # save train and test splits
         df.iloc[train_set_idxs].to_csv(f"{experiments_path}/fold_{i}_train_seed_{args.seed}.csv", index=False)
         df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
-        df.iloc[test_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
+        df_external.to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
         # get direction of cluster center
         cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
@@ -126,7 +146,7 @@ def main():
         interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
 
         # sample_directions
-        sample_directions = head_wise_activation_directions[test_idxs]
+        sample_directions = None
 
 
         if args.probe_type == 'prob':
@@ -168,11 +188,11 @@ def main():
                     
         curr_fold_results = alt_tqa_evaluate(
             {args.model_name: model}, 
-            ['mc','bleu','bleurt', 'judge', 'info'], 
+            ['mc'], 
             f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
-            device="cuda", 
+            device=device, 
             interventions=interventions if not args.pure else {},
             intervention_fn=lt_modulated_cluster_probe_add if not args.pure else None, 
             judge_name=args.judge_name, 
@@ -191,7 +211,7 @@ def main():
     final = results.mean(axis=0)
 
     # print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
-    print(f'True*Info Score: {final[1]*final[2]}, True Score: {final[2]}, Info Score: {final[1]}, BLEURT acc: {final[0]:.4f}, MC1: {final[3]:.4f}, MC2: {final[4]:.4f}, bleu acc: {final[5]:.4f}, rouge1 acc: {final[6]:.4f}, CE Loss: {final[7]}, KL wrt Original: {final[8]}')
+    print(f'MC1: {final[0]:.4f}, MC2: {final[1]:.4f}')
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
 if __name__ == "__main__":

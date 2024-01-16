@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
-    parser.add_argument('--device', type=int, default=2, help='device')
+    parser.add_argument('--device', type=int, default=1, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
     parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
@@ -68,9 +68,13 @@ def main():
     # create model
     model_name = HF_NAMES[args.model_name]
     tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
-    model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map="auto")
-    # r = model.to(args.device)
-    device = args.device
+    if args.model_name == 'llama_7B':
+        model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map=args.device)
+        r = model.to(args.device)
+        device = args.device
+    else:
+        model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map="auto")
+        device = 'cuda'
 
     # run k-fold cross validation
     results = []
@@ -98,7 +102,7 @@ def main():
             f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
-            device="cuda", 
+            device=device, 
             interventions={},
             intervention_fn=None, 
             judge_name=args.judge_name, 
