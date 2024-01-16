@@ -1,10 +1,10 @@
 #!/bin/bash
 
 alpha=(5 10 15)
-probe_base_weights=(0)
-n_clusters=(7 8)
+probe_base_weights=(-1)
+n_clusters=(3 4)
 num_heads=(8 16 24)
-device=3
+device=2
 
 for a in "${alpha[@]}"; do
     for num_head in "${num_heads[@]}"; do
