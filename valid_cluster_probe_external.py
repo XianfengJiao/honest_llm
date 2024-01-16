@@ -88,8 +88,8 @@ def main():
         dataset = load_dataset('parquet', data_files=url)['train']
 
         df_external = pd.DataFrame(dataset)
-        df_external['Correct Answers'] = df_external['answer'].apply(lambda x: ';'.join(x['normalized_aliases']))
-        df_external['Best Answer'] = df_external['answer'].apply(lambda x: x['normalized_value'])
+        df_external['Correct Answers'] = df_external['answer'].apply(lambda x: ';'.join(x['aliases']))
+        df_external['Best Answer'] = df_external['answer'].apply(lambda x: x['value'])
         df_external['Incorrect Answers'] = df_external['false_answer']
         df_external['Question'] = df_external['question']
 
@@ -115,35 +115,35 @@ def main():
     num_layers = model.config.num_hidden_layers
     num_heads = model.config.num_attention_heads
 
-    # load activations 
-    head_wise_activations = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_100_head_wise.pkl', 'rb'))
-    labels = np.load(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_100_labels.npy')
-    head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
+    if not args.pure:
+        # load activations 
+        head_wise_activations = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_100_head_wise.pkl', 'rb'))
+        labels = np.load(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_100_labels.npy')
+        head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
-    # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
-    separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
+        # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
+        separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
 
     # run k-fold cross validation
     results = []
     for i in range(args.num_fold):
-
-        all_idxs = fold_idxs[i]
-        val_set_idxs = np.random.choice(all_idxs, size=int(len(all_idxs)*(args.val_ratio)), replace=False)
-        train_set_idxs = np.array([x for x in all_idxs if x not in val_set_idxs])
         print(f"Running fold {i}")
-
-        # save train and test splits
-        df.iloc[train_set_idxs].to_csv(f"{experiments_path}/fold_{i}_train_seed_{args.seed}.csv", index=False)
-        df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
         df_external.to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
-        # get direction of cluster center
-        cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
+        if not args.pure:
+            # save train and test splits
+            all_idxs = fold_idxs[i]
+            val_set_idxs = np.random.choice(all_idxs, size=int(len(all_idxs)*(args.val_ratio)), replace=False)
+            train_set_idxs = np.array([x for x in all_idxs if x not in val_set_idxs])
+            df.iloc[train_set_idxs].to_csv(f"{experiments_path}/fold_{i}_train_seed_{args.seed}.csv", index=False)
+            df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
+            # get direction of cluster center
+            cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
 
-        top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
-        # print("Heads intervened: ", sorted(top_heads))
-    
-        interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
+            top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
+            # print("Heads intervened: ", sorted(top_heads))
+        
+            interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
 
         # sample_directions
         sample_directions = None
