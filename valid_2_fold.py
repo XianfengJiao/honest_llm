@@ -71,7 +71,7 @@ def main():
     parser.add_argument('--use_center_of_mass', action='store_true', help='use center of mass direction', default=False)
     parser.add_argument('--direction_type', type=str, default='pca')
     parser.add_argument('--use_random_dir', action='store_true', help='use random direction', default=False)
-    parser.add_argument('--device', type=int, default=2, help='device')
+    parser.add_argument('--device', type=int, default=1, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--judge_name', type=str, required=False)
     parser.add_argument('--info_name', type=str, required=False)

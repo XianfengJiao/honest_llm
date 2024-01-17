@@ -196,6 +196,38 @@ def tokenized_tqa_all(dataset, tokenizer, ref_df=None):
     
     return all_prompts, all_labels, all_categories, all_tokens
 
+def tokenized_tqa_gen_end_q_all(dataset, tokenizer, ref_df=None): 
+
+    all_prompts = []
+    all_labels = []
+    all_tokens = []
+    all_categories = []
+    for i in range(len(dataset)):
+        question = dataset[i]['question']
+        choices = dataset[i]['mc2_targets']['choices']
+        labels = dataset[i]['mc2_targets']['labels']
+        rand_idx = np.random.randint(len(dataset))
+        rand_question = dataset[rand_idx]['question']
+        categorie = ref_df.loc[ref_df['Question'] == question, 'Category'].iloc[0] if ref_df is not None else 'Unknown'
+
+        assert len(choices) == len(labels), (len(choices), len(labels))
+
+        for j in range(len(choices)): 
+            choice = choices[j]
+            label = labels[j]
+            prompt = format_truthfulqa_end_q(question, choice, rand_question)
+            if i == 0 and j == 0: 
+                print(prompt)
+            prompt = tokenizer(prompt, return_tensors = 'pt').input_ids
+            tokens = tokenizer.convert_ids_to_tokens(prompt[0])
+            all_tokens.append(tokens)
+            all_prompts.append(prompt)
+            all_labels.append(label)
+            all_categories.append(categorie)
+    
+    return all_prompts, all_labels, all_categories, all_tokens
+
+
 def tokenized_tqa_gen_end_q(dataset, tokenizer): 
 
     all_prompts = []
@@ -1115,6 +1147,25 @@ def get_cluster_probe_interventions_dict(top_heads, probes, tuning_activations, 
 
     return interventions
 
+def get_cluster_mean_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
+    interventions = {}
+
+    for cluster_i in range(len(top_heads)):
+        for layer, head in top_heads[cluster_i]: 
+            interventions[f"model.layers.{layer}.self_attn.head_out"] = []
+
+    for cluster_i in range(len(top_heads)):
+        for layer, head in top_heads[cluster_i]: 
+            probe = probes[cluster_i][layer_head_to_flattened_idx(layer, head, num_heads)]
+            direction = com_directions[layer, head, cluster_i]    
+            activations = tuning_activations[:,layer,head,:] # batch x 128
+            proj_vals = activations @ direction.T
+            proj_val_std = np.std(proj_vals)
+            interventions[f"model.layers.{layer}.self_attn.head_out"].append((head, direction.squeeze(), proj_val_std, probe))
+        for layer, _ in top_heads[cluster_i]: 
+            interventions[f"model.layers.{layer}.self_attn.head_out"] = sorted(interventions[f"model.layers.{layer}.self_attn.head_out"], key = lambda x: x[0])
+
+    return interventions
 
 def get_cluster_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass, use_random_dir, com_directions): 
     interventions = {}
@@ -1361,6 +1412,34 @@ def get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separa
         cluster_idxs.append(layer_cluster_idxs)
 
     return cluster_idxs
+
+def get_cluster_idxs_and_centers(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=3, directions=None): 
+
+    cluster_idxs = []
+    com_directions = []
+
+    for layer in tqdm(range(num_layers), desc=f'gen cluster-{n_clusters} mean directions:'): 
+        layer_cluster_idxs = []
+        for head in range(num_heads): 
+            usable_idxs = np.concatenate([train_set_idxs, val_set_idxs], axis=0)
+            # usable_head_wise_activations = [separated_head_wise_activations[i][:,layer,head,:] for i in usable_idxs]
+            # usable_labels = [separated_labels[i] for i in usable_idxs]
+            # usable_head_wise_directions = gen_sample_directions(usable_head_wise_activations, usable_labels, random_reverse=False)
+
+            usable_head_wise_directions = directions[usable_idxs, layer, head, :]
+            kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42).fit(usable_head_wise_directions)
+            cluster_labels = kmeans.labels_
+            head_clusters = [np.where(cluster_labels == i)[0] for i in range(n_clusters)]
+            layer_cluster_idxs.append(head_clusters)
+
+            cluster_centers = kmeans.cluster_centers_
+            com_directions.append(cluster_centers)
+
+        cluster_idxs.append(layer_cluster_idxs)
+    
+    com_directions = np.array(com_directions).reshape(num_layers, num_heads, len(cluster_idxs[0][0]), -1)
+
+    return cluster_idxs, com_directions
 
 def fewshot_eqipped(frame, tag='none'):
     if tag not in frame.columns:

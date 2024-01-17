@@ -35,7 +35,7 @@ def main():
     parser.add_argument('--probe_type', type=str, default='prob')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
-    parser.add_argument('--device', type=int, default=7, help='device')
+    parser.add_argument('--device', type=int, default=0, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
     parser.add_argument('--judge_name', type=str, required=False)
@@ -47,6 +47,8 @@ def main():
     print(args)
     if args.pure:
         experiment_name = f'{args.model_name}_pure'
+    elif args.probe_type == 'mean':
+        experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_mean'
     else:
         experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}'
     experiments_path = f'/data/wtl/honest_llm/cluster_probe_experiments/version/{experiment_name}'
@@ -60,6 +62,7 @@ def main():
 
     # load dataframe and activations direcitons
     df = pd.read_csv('./TruthfulQA/data/v0/TruthfulQA.csv')
+    # head_wise_activation_directions = np.load(f'/data/wtl/honest_llm/directions/{args.model_name}_head_wise_activation_directions.npy')
     head_wise_activation_directions = np.load(f'/data/wtl/honest_llm/directions/{args.model_name}_head_wise_activation_directions.npy')
     # norms = np.linalg.norm(head_wise_activation_directions, axis=-1, keepdims=True)
     # # 避免除以零的情况
@@ -119,19 +122,24 @@ def main():
         df.iloc[test_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
         if not args.pure:
-            # get direction of cluster center, return (num_layers, num_heads, num_cluster, index)
-            cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
-
-            top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
-            # print("Heads intervened: ", sorted(top_heads))
-        
-            interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
+            if args.probe_type == 'prob':
+                # get direction of cluster center, return (num_layers, num_heads, num_cluster, index)
+                cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
+                top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
+                # print("Heads intervened: ", sorted(top_heads))
+                interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
+            
+            elif args.probe_type == 'mean':
+                cluster_idxs, cluster_centers = get_cluster_idxs_and_centers(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
+                top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
+                interventions = get_cluster_mean_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=cluster_centers)
+            
 
         # sample_directions
         sample_directions = head_wise_activation_directions[test_idxs]
 
 
-        if args.probe_type == 'prob':
+        if args.probe_type == 'prob' or args.probe_type == 'mean':
             def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
                 head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
                 for head, direction, proj_val_std, probe in interventions[layer_name]:
@@ -171,6 +179,7 @@ def main():
         curr_fold_results = alt_tqa_evaluate(
             {args.model_name: model}, 
             ['mc','bleu','bleurt'], 
+            # ['mc','bleu'], 
             f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
@@ -195,6 +204,7 @@ def main():
     final = results.mean(axis=0)
 
     print(f'MC1: {final[1]:.3f}, MC2: {final[2]:.3f}, BLEURT acc: {final[0]:.3f}, bleu acc: {final[3]:.3f}, rouge1 acc: {final[4]:.3f}, CE Loss: {final[5]:.3f}, KL wrt Original: {final[6]:.3f}')
+    # print(f'MC1: {final[0]:.3f}, MC2: {final[1]:.3f}, bleu acc: {final[2]:.3f}, rouge1 acc: {final[3]:.3f}, CE Loss: {final[4]:.3f}, KL wrt Original: {final[5]:.3f}')
 
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 

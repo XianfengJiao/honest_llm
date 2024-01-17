@@ -24,7 +24,7 @@ def main():
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2')
     parser.add_argument('--collect', type=str, default='all_100')
     parser.add_argument('--cut_type', type=str, default='')
-    parser.add_argument('--device', type=int, default=3)
+    parser.add_argument('--device', type=int, default=0)
     args = parser.parse_args()
     HF_NAMES = {
         'llama_7B': 'yahma/llama-7b-hf',
@@ -42,7 +42,7 @@ def main():
     MODEL = HF_NAMES[args.model_name]
 
     tokenizer = llama.LLaMATokenizer.from_pretrained(MODEL)
-    model = llama.LLaMAForCausalLM.from_pretrained(MODEL, low_cpu_mem_usage=True, torch_dtype=torch.float16, device_map='auto')
+    model = llama.LLaMAForCausalLM.from_pretrained(MODEL, low_cpu_mem_usage=True, torch_dtype=torch.float16, device_map=args.device)
     device = args.device
     r = model.to(device)
 
@@ -68,8 +68,10 @@ def main():
         dataset = load_dataset("truthful_qa", 'generation')['validation']
         formatter = tokenized_tqa_gen
     elif args.dataset_name == 'tqa_gen_end_q': 
-        dataset = load_dataset("truthful_qa", 'generation')['validation']
-        formatter = tokenized_tqa_gen_end_q
+        url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
+        dataset = load_dataset('parquet', data_files=url)['train'] 
+        # dataset = load_dataset("truthful_qa", 'generation')['validation']
+        formatter = tokenized_tqa_gen_end_q_all
     else:
         raise ValueError("Invalid dataset name")
 
@@ -105,7 +107,6 @@ def main():
             all_layer_wise_activations.append(layer_wise_activations)
             all_head_wise_activations.append(head_wise_activations)
         elif args.collect == 'all_100':
-            print("collect type: all_100")
             all_layer_wise_activations.append(layer_wise_activations[:, -1, :])
             all_head_wise_activations.append(head_wise_activations[:, -1, :])
 

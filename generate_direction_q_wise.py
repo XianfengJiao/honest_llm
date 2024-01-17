@@ -15,12 +15,17 @@ import requests
 
 
 # 'llama_7B', 'llama2_7B', 'llama2_chat_7B', 'alpaca_7B', 'vicuna_7B'
-model_name = 'vicuna_7B'
+model_name = 'llama2_chat_7B'
 
 head_wise_activations = pkl.load(open(f'/data/wtl/honest_llm/activations/{model_name}_tqa_mc2_all_100_head_wise.pkl', 'rb'))
 labels = np.load(f'/data/wtl/honest_llm/activations/{model_name}_tqa_mc2_all_100_labels.npy')
 activation_categories = pkl.load(open(f'/data/wtl/honest_llm/activations/{model_name}_tqa_mc2_all_100_categories.pkl', 'rb'))
 tokens = pkl.load(open(f'/data/wtl/honest_llm/activations/{model_name}_tqa_mc2_all_100_tokens.pkl', 'rb'))
+
+# head_wise_activations = pkl.load(open(f'/data/wtl/honest_llm/activations/{model_name}_tqa_gen_end_q_all_100_head_wise.pkl', 'rb'))
+# labels = np.load(f'/data/wtl/honest_llm/activations/{model_name}_tqa_gen_end_q_all_100_labels.npy')
+# activation_categories = pkl.load(open(f'/data/wtl/honest_llm/activations/{model_name}_tqa_gen_end_q_all_100_categories.pkl', 'rb'))
+# tokens = pkl.load(open(f'/data/wtl/honest_llm/activations/{model_name}_tqa_gen_end_q_all_100_tokens.pkl', 'rb'))
 num_heads = 32
 head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
