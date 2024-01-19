@@ -23,7 +23,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='llama_7B')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2')
-    parser.add_argument('--collect', type=str, default='all_100')
+    parser.add_argument('--collect', type=str, default='all')
     parser.add_argument('--cut_type', type=str, default='')
     parser.add_argument('--device', type=int, default=0)
     args = parser.parse_args()

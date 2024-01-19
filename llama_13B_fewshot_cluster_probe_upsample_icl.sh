@@ -1,11 +1,10 @@
 #!/bin/bash
-
-
-alpha=(10 15)
-probe_base_weights=(0.1 0.3 0.5)
+alpha=(15)
+probe_base_weights=(0.1 0.2 0.3)
 n_clusters=(3)
-num_heads=(32)
-cut_rates=(0.8)
+num_heads=(28)
+cut_rates=(0.9)
+
 
 for c in "${cut_rates[@]}"; do
     for a in "${alpha[@]}"; do
@@ -14,8 +13,8 @@ for c in "${cut_rates[@]}"; do
                 # 内循环遍历 n_clusters
                 for cluster in "${n_clusters[@]}"; do
                     # 显示正在执行的命令
-                    echo "Running: fewshot_llama_7B_cluster${cluster}_probe_cut${c}_heads${num_head}_alpha${a}_baseW${weight//.}_icl"
-                    nohup python -u fewshot_cluster_probe_upsample.py --method='icl' --device=2 --probe_type=prob --probe_base_weight="$weight" --n_clusters="$cluster" --num_heads="$num_head" --alpha="$a" --cut_rate="$c" > "./logs/fewshot_llama_7B_cluster${cluster}_probe_cut${c}_heads${num_head}_alpha${a}_baseW${weight//.}_prob_icl.log" 2>&1 &
+                    echo "Running: fewshot_llama_13B_cluster${cluster}_probe_cut${c}_heads${num_head}_alpha${a}_baseW${weight//.}_icl"
+                    nohup python -u fewshot_cluster_probe_upsample.py --model_name='llama_13B' --method='icl' --probe_type=prob --probe_base_weight="$weight" --n_clusters="$cluster" --num_heads="$num_head" --alpha="$a" --cut_rate="$c" > "./logs/fewshot_llama_13B_cluster${cluster}_probe_cut${c}_heads${num_head}_alpha${a}_baseW${weight//.}_prob_icl.log" 2>&1 &
                     wait
 
                     # echo "Running: fewshot_llama_7B_cluster${cluster}_probe_cut${c}_heads${num_head}_alpha${a}_baseW${weight//.}_none"
