@@ -16,8 +16,8 @@ url = "https://huggingface.co/api/datasets/OamPatel/iti_trivia_qa_val/parquet/de
 dataset = load_dataset('parquet', data_files=url)['train']
 
 df = pd.DataFrame(dataset)
-df['Correct Answers'] = df['answer'].apply(lambda x: ';'.join(x['normalized_aliases']))
-df['Best Answer'] = df['answer'].apply(lambda x: x['normalized_value'])
+df['Correct Answers'] = df['answer'].apply(lambda x: ';'.join(x['aliases']))
+df['Best Answer'] = df['answer'].apply(lambda x: x['value'])
 df['Incorrect Answers'] = df['false_answer']
 print(dataset)
 
