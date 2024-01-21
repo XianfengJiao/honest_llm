@@ -129,7 +129,6 @@ def main():
     # run k-fold cross validation
     results = []
     for i in range(args.num_fold):
-<<<<<<< HEAD
         print(f"Running fold {i}")
         df_external.to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
@@ -147,26 +146,6 @@ def main():
             # print("Heads intervened: ", sorted(top_heads))
         
             interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
-=======
-
-        all_idxs = fold_idxs[i]
-        val_set_idxs = np.random.choice(all_idxs, size=int(len(all_idxs)*(args.val_ratio)), replace=False)
-        train_set_idxs = np.array([x for x in all_idxs if x not in val_set_idxs])
-        print(f"Running fold {i}")
-
-        # save train and test splits
-        df.iloc[train_set_idxs].to_csv(f"{experiments_path}/fold_{i}_train_seed_{args.seed}.csv", index=False)
-        df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
-        df_external.to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
-
-        # get direction of cluster center
-        cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
-
-        top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
-        # print("Heads intervened: ", sorted(top_heads))
-    
-        interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
->>>>>>> 38f22c2333f4a0e5417612e00f9614caccde614b
 
         # sample_directions
         sample_directions = None
@@ -221,13 +200,9 @@ def main():
             judge_name=args.judge_name, 
             info_name=args.info_name,
             use_cluster=False,
-<<<<<<< HEAD
             sample_directions = sample_directions,
             instruction_prompt=False,
             preset='normal',
-=======
-            sample_directions = sample_directions
->>>>>>> 38f22c2333f4a0e5417612e00f9614caccde614b
         )
 
         print(f"FOLD {i}")
