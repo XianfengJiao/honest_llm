@@ -23,7 +23,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='llama_7B')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2')
-    parser.add_argument('--collect', type=str, default='all_100')
+    parser.add_argument('--collect', type=str, default='all')
     parser.add_argument('--cut_type', type=str, default='')
     parser.add_argument('--device', type=int, default=0)
     args = parser.parse_args()
@@ -83,7 +83,7 @@ def main():
     all_head_wise_activations = []
 
     print("Getting activations")
-    for prompt, token in tqdm(zip(prompts, tokens), total=len(prompts)):
+    for prompt, token in tqdm(zip(prompts[len(prompts) // 2:], tokens[len(tokens) // 2:]), total=len(prompts)//2):
         # layer_wise_activations (33, 42, 4096) num_hidden_layers + last, seq_len, hidden_size
         # head_wise_activations (32, 42, 4096) num_hidden_layers, seq_len, hidden_size
         layer_wise_activations, head_wise_activations, _ = get_llama_activations_bau(model, prompt, 'cuda')
@@ -119,7 +119,7 @@ def main():
     # np.save(f'features/all_activations/{args.model_name}_{args.dataset_name}_layer_wise.npy', all_layer_wise_activations)
     
     print("Saving head wise activations")
-    pickle.dump(all_head_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise.pkl', 'wb'))
+    pickle.dump(all_head_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise_1.pkl', 'wb'))
     # np.save(f'features/all_activations/{args.model_name}_{args.dataset_name}_head_wise.npy', all_head_wise_activations)
 
     print("All saved successfully")
