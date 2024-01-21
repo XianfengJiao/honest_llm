@@ -23,17 +23,17 @@ HF_NAMES = {
     'llama_33B': 'alexl83/LLaMA-33B-HF',
 }
 
+
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
-    parser.add_argument('--dataset_name', type=str, default='nq_open', help='feature bank for training probes')
+    parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
     parser.add_argument('--pure', action='store_true', default=False)
-    parser.add_argument('--probe_type', type=str, default='prob')
-    parser.add_argument('--activation_type', type=str, default='cutrandom')
-    parser.add_argument("--num_fold", type=int, default=1, help="number of folds")
+    parser.add_argument('--probe_type', type=str, default='01')
+    parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
     parser.add_argument('--device', type=int, default=0, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
@@ -45,9 +45,9 @@ def main():
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
     if args.pure:
-        experiment_name = f'{args.model_name}_{args.dataset_name}_pure'
+        experiment_name = f'valid_2_fold_{args.model_name}_pure'
     else:
-        experiment_name = f'{args.model_name}_{args.dataset_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
+        experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
     experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
@@ -68,31 +68,10 @@ def main():
 
     # order csv by huggingface order, the order used to save activations
     # dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
-    
     url = "https://huggingface.co/api/datasets/truthful_qa/parquet/multiple_choice/validation/0.parquet"
     dataset = load_dataset('parquet', data_files=url)['train']
     golden_q_order = list(dataset["question"])
     df = df.sort_values(by='Question', key=lambda x: x.map({k: i for i, k in enumerate(golden_q_order)}))
-
-    if args.dataset_name == 'nq_open':
-        url = "https://huggingface.co/api/datasets/OamPatel/iti_nq_open_val/parquet/default/validation/0.parquet"
-        dataset = load_dataset('parquet', data_files=url)['train']
-        
-        df_external = pd.DataFrame(dataset)
-
-        df_external['Correct Answers'] = df_external['answer'].apply(lambda x: x[0])
-        df_external['Best Answer'] = df_external['answer'].apply(lambda x: x[0])
-        df_external['Incorrect Answers'] = df_external['false_answer']
-        df_external['Question'] = df_external['question']
-    elif args.dataset_name == 'trivia_qa':
-        url = "https://huggingface.co/api/datasets/OamPatel/iti_trivia_qa_val/parquet/default/validation/0.parquet"
-        dataset = load_dataset('parquet', data_files=url)['train']
-
-        df_external = pd.DataFrame(dataset)
-        df_external['Correct Answers'] = df_external['answer'].apply(lambda x: ';'.join(x['aliases']))
-        df_external['Best Answer'] = df_external['answer'].apply(lambda x: x['value'])
-        df_external['Incorrect Answers'] = df_external['false_answer']
-        df_external['Question'] = df_external['question']
 
     dictionary = {k: i for i, k in enumerate(golden_q_order)}
     for q in df['Question']:
@@ -104,60 +83,39 @@ def main():
     # create model
     model_name = HF_NAMES[args.model_name]
     tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
-    # if args.model_name == 'llama_7B':
-    # if False:
-    #     model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map=args.device)
-    #     r = model.to(args.device)
-    #     device = args.device
-    # else:
     model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map="auto")
-    device = 'cuda'
+    # r = model.to(args.device)
+    device = args.device
     
     # define number of layers and heads
     num_layers = model.config.num_hidden_layers
     num_heads = model.config.num_attention_heads
 
-    if not args.pure:
-        # load activations 
-        head_wise_activations = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_{args.activation_type}_head_wise.pkl', 'rb'))
-        labels = np.load(f'/data/jxf/activations/{args.model_name}_tqa_mc2_{args.activation_type}_labels.npy')
-        head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
+    # load activations 
+    head_wise_activations = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_100_head_wise.pkl', 'rb'))
+    labels = np.load(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_100_labels.npy')
+    head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
-        # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
-        separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
+    # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
+    separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
 
     # run k-fold cross validation
     results = []
     for i in range(args.num_fold):
-<<<<<<< HEAD
+
+        train_idxs = np.concatenate([fold_idxs[j] for j in range(args.num_fold) if j != i])
+        test_idxs = fold_idxs[i]
+
         print(f"Running fold {i}")
-        df_external.to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
-        if not args.pure:
-            # save train and test splits
-            all_idxs = fold_idxs[i]
-            val_set_idxs = np.random.choice(all_idxs, size=int(len(all_idxs)*(args.val_ratio)), replace=False)
-            train_set_idxs = np.array([x for x in all_idxs if x not in val_set_idxs])
-            df.iloc[train_set_idxs].to_csv(f"{experiments_path}/fold_{i}_train_seed_{args.seed}.csv", index=False)
-            df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
-            # get direction of cluster center
-            cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
-
-            top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
-            # print("Heads intervened: ", sorted(top_heads))
-        
-            interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
-=======
-
-        all_idxs = fold_idxs[i]
-        val_set_idxs = np.random.choice(all_idxs, size=int(len(all_idxs)*(args.val_ratio)), replace=False)
-        train_set_idxs = np.array([x for x in all_idxs if x not in val_set_idxs])
-        print(f"Running fold {i}")
+        # pick a val set using numpy
+        train_set_idxs = np.random.choice(train_idxs, size=int(len(train_idxs)*(1-args.val_ratio)), replace=False)
+        val_set_idxs = np.array([x for x in train_idxs if x not in train_set_idxs])
 
         # save train and test splits
         df.iloc[train_set_idxs].to_csv(f"{experiments_path}/fold_{i}_train_seed_{args.seed}.csv", index=False)
         df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
-        df_external.to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
+        df.iloc[test_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
         # get direction of cluster center
         cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
@@ -166,10 +124,9 @@ def main():
         # print("Heads intervened: ", sorted(top_heads))
     
         interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
->>>>>>> 38f22c2333f4a0e5417612e00f9614caccde614b
 
         # sample_directions
-        sample_directions = None
+        sample_directions = head_wise_activation_directions[test_idxs]
 
 
         if args.probe_type == 'prob':
@@ -211,23 +168,17 @@ def main():
                     
         curr_fold_results = alt_tqa_evaluate(
             {args.model_name: model}, 
-            ['mc'], 
+            ['mc', 'judge', 'info'], 
             f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
-            device=device, 
+            device="cuda", 
             interventions=interventions if not args.pure else {},
             intervention_fn=lt_modulated_cluster_probe_add if not args.pure else None, 
             judge_name=args.judge_name, 
             info_name=args.info_name,
             use_cluster=False,
-<<<<<<< HEAD
-            sample_directions = sample_directions,
-            instruction_prompt=False,
-            preset='normal',
-=======
             sample_directions = sample_directions
->>>>>>> 38f22c2333f4a0e5417612e00f9614caccde614b
         )
 
         print(f"FOLD {i}")
@@ -240,7 +191,7 @@ def main():
     final = results.mean(axis=0)
 
     # print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
-    print(f'MC1: {final[0]:.4f}, MC2: {final[1]:.4f}')
+    print(f'True*Info Score: {final[0]*final[1]}, True Score: {final[1]}, Info Score: {final[0]}, MC1: {final[2]:.4f}, MC2: {final[3]:.4f}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
 if __name__ == "__main__":

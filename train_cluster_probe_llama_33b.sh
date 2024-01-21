@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export CUDA_VISIBLE_DEVICES=0,2,3
+
 # 定义 probe_base_weight 和 n_clusters 的数组
 alpha=(5)
 probe_base_weights=(0)

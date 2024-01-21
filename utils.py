@@ -615,9 +615,9 @@ def tqa_run_probs(frame, engine, tag, preset, model=None, tokenizer=None, verbos
                     continue
 
                 # reference answers
-                ref_best = format_best(frame.loc[idx, BEST_COL])
-                ref_true = split_multi_answer(frame.loc[idx, ANSWER_COL])
-                ref_false = split_multi_answer(frame.loc[idx, INCORRECT_COL])
+                ref_best = format_best(frame.loc[idx, BEST_COL] if type(frame.loc[idx, BEST_COL]) == str else str(frame.loc[idx, BEST_COL]))
+                ref_true = split_multi_answer(frame.loc[idx, ANSWER_COL] if type(frame.loc[idx, ANSWER_COL]) == str else str(frame.loc[idx, ANSWER_COL]))
+                ref_false = split_multi_answer(frame.loc[idx, INCORRECT_COL] if type(frame.loc[idx, INCORRECT_COL]) == str else str(frame.loc[idx, INCORRECT_COL]))
 
                 scores_true = []
                 scores_false = []
@@ -957,7 +957,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
             warnings.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
             continue
         if 'llama' in model_key or 'alpaca' in model_key or 'vicuna' in model_key:
-            if not use_cluster:
+            if not use_cluster and len(metric_names) > 1:
                 ce_loss = run_ce_loss(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn)
                 kl_wrt_orig = run_kl_wrt_orig(model_key, model=llama_model, tokenizer=llama_tokenizer, device=device, interventions=interventions, intervention_fn=intervention_fn, separate_kl_device=separate_kl_device)
 
