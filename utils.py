@@ -861,7 +861,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
                 questions = tqa_run_answers_cluster(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
                                 device=device, cache_dir=cache_dir, verbose=verbose,
                                 interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix, sample_directions=sample_directions)
-            else:
+            elif len(metric_names) > 1:
                 questions = tqa_run_answers(questions, ENGINE_MAP[mdl], mdl, preset, model=llama_model, tokenizer=llama_tokenizer,
                                 device=device, cache_dir=cache_dir, verbose=verbose,
                                 interventions=interventions, intervention_fn=intervention_fn, instruction_prompt=instruction_prompt, many_shot_prefix=many_shot_prefix)

@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
     parser.add_argument('--pure', action='store_true', default=False)
     parser.add_argument('--probe_type', type=str, default='prob')
-    parser.add_argument('--activation_type', type=str, default='all_100')
+    parser.add_argument('--activation_type', type=str, default='cutrandom')
     parser.add_argument("--num_fold", type=int, default=1, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
     parser.add_argument('--device', type=int, default=0, help='device')
@@ -45,9 +45,9 @@ def main():
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
     if args.pure:
-        experiment_name = f'valid_2_fold_{args.model_name}_pure'
+        experiment_name = f'{args.model_name}_{args.dataset_name}_pure'
     else:
-        experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
+        experiment_name = f'{args.model_name}_{args.dataset_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}'
     experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
@@ -104,7 +104,8 @@ def main():
     # create model
     model_name = HF_NAMES[args.model_name]
     tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
-    if args.model_name == 'llama_7B':
+    # if args.model_name == 'llama_7B':
+    if False:
         model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map=args.device)
         r = model.to(args.device)
         device = args.device
@@ -199,7 +200,9 @@ def main():
             judge_name=args.judge_name, 
             info_name=args.info_name,
             use_cluster=False,
-            sample_directions = sample_directions
+            sample_directions = sample_directions,
+            instruction_prompt=False,
+            preset='normal',
         )
 
         print(f"FOLD {i}")
