@@ -1,9 +1,9 @@
 #!/bin/bash
 
-alpha=(5 7 9 10)
-probe_base_weights=(0)
+alpha=(2.5)
+probe_base_weights=(0 0.1 0.2 0.3)
 n_clusters=(2)
-num_heads=(8 12 16 24)
+num_heads=(32 48)
 device=0
 
 for a in "${alpha[@]}"; do

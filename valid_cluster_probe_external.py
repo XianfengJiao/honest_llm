@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
-    parser.add_argument('--pure', action='store_true', default=True)
+    parser.add_argument('--pure', action='store_true', default=False)
     parser.add_argument('--probe_type', type=str, default='prob')
     parser.add_argument('--activation_type', type=str, default='cutrandom')
     parser.add_argument("--num_fold", type=int, default=1, help="number of folds")
