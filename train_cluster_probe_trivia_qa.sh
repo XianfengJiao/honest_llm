@@ -5,7 +5,7 @@ alpha=(10 13 14 15 17)
 probe_base_weights=(0)
 n_clusters=(2 3 4)
 num_heads=(16 24 32 48)
-device=3
+device=0
 
 # 外循环遍历 probe_base_weight
 

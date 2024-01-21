@@ -1,10 +1,10 @@
 #!/bin/bash
 
 
-alpha=(13)
+alpha=(12)
 probe_base_weights=(0.0 0.1 0.2 0.3 0.4 0.5)
 n_clusters=(2)
-num_heads=(32)
+num_heads=(48)
 cut_rates=(0.9)
 
 for c in "${cut_rates[@]}"; do

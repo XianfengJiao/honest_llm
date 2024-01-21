@@ -90,8 +90,14 @@ def main():
     num_layers = model.config.num_hidden_layers
     num_heads = model.config.num_attention_heads
 
-    # load activations 
-    head_wise_activations = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_head_wise.pkl', 'rb'))
+    # load activations
+    if args.model_name == 'llama_33B':
+        head_wise_activations = []
+        for i in range(2):
+            head_wise_activations_tmp = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_head_wise_{i}.pkl', 'rb'))
+            head_wise_activations += head_wise_activations_tmp
+    else:
+        head_wise_activations = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_head_wise.pkl', 'rb'))
     labels = np.load(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_labels.npy')
     # head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 

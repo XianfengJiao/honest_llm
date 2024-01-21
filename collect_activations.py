@@ -83,7 +83,7 @@ def main():
     all_head_wise_activations = []
 
     print("Getting activations")
-    for prompt, token in tqdm(zip(prompts, tokens), total=len(prompts)):
+    for prompt, token in tqdm(zip(prompts[len(prompts) // 2:], tokens[len(tokens) // 2:]), total=len(prompts)//2):
         # layer_wise_activations (33, 42, 4096) num_hidden_layers + last, seq_len, hidden_size
         # head_wise_activations (32, 42, 4096) num_hidden_layers, seq_len, hidden_size
         layer_wise_activations, head_wise_activations, _ = get_llama_activations_bau(model, prompt, 'cuda')

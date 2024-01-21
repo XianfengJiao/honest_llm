@@ -1,10 +1,16 @@
 #!/bin/bash
-alpha=(15)
+
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+
+alpha=(13)
 probe_base_weights=(0.1 0.2 0.3)
-n_clusters=(3)
-num_heads=(28)
+n_clusters=(2)
+num_heads=(24)
 cut_rates=(0.9)
 
+# echo "Running: fewshot_llama_13B_pure_icl"
+# nohup python -u fewshot_cluster_probe.py --model_name='llama_13B' --method='icl' --pure > "./logs/fewshot_llama_13B_pure_icl.log" 2>&1 &
+# wait
 
 for c in "${cut_rates[@]}"; do
     for a in "${alpha[@]}"; do

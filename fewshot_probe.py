@@ -36,7 +36,8 @@ def main():
     parser.add_argument("--num_fold", type=int, default=1, help="number of folds")
     parser.add_argument('--fewshot_ratio', type=float, default=0.053)
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.05)
-    parser.add_argument('--device', type=int, default=2, help='device')
+    parser.add_argument('--use_random_dir', action='store_true', help='use random direction', default=False)
+    parser.add_argument('--device', type=int, default=1, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
     parser.add_argument('--judge_name', type=str, required=False)
@@ -49,7 +50,9 @@ def main():
     if args.pure:
         experiment_name = f'fewshot_pure_{args.method}'
     else:
-        experiment_name = f'fewshot_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}_{args.method}'
+        experiment_name = f'fewshot_probe_num_heads{args.num_heads}_alpha{args.alpha}_{args.method}'
+    if args.use_center_of_mass:
+        experiment_name += '_mean'
     experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')

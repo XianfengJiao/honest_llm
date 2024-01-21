@@ -940,7 +940,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
                                                     0: 'Value'})
 
     # filter to most informative metrics
-    results = results[results['Metric'].isin(['MC1', 'MC2',
+    results = results[results['Metric'].isin(['MC1', 'MC2', 
                                               'bleu acc',
                                               'rouge1 acc',
                                               'BLEURT acc',
