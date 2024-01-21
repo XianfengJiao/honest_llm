@@ -26,7 +26,7 @@ HF_NAMES = {
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
-    parser.add_argument('--dataset_name', type=str, default='nq_open', help='feature bank for training probes')
+    parser.add_argument('--dataset_name', type=str, default='trivia_qa', help='feature bank for training probes')
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
@@ -90,7 +90,8 @@ def main():
 
         df_external = pd.DataFrame(dataset)
         df_external['Correct Answers'] = df_external['answer'].apply(lambda x: ';'.join(x['aliases']))
-        df_external['Best Answer'] = df_external['answer'].apply(lambda x: x['value'])
+        df_external['Best Answer'] = df_external['answer'].apply(lambda x: x['aliases'][np.random.choice(len(x['aliases']))])
+
         df_external['Incorrect Answers'] = df_external['false_answer']
         df_external['Question'] = df_external['question']
 
