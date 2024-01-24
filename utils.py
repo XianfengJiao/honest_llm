@@ -39,6 +39,7 @@ ENGINE_MAP = {
     'llama2_chat_7B': 'daryl149/llama-2-7b-chat-hf',
     'llama_13B': 'luodian/llama-13b-hf',
     'llama_33B': 'alexl83/LLaMA-33B-HF',
+    'llama_65B': 'Enoch/llama-65b-hf',
 }
 
 
@@ -275,7 +276,7 @@ def get_llama_activations_bau(model, prompt, device):
     MLPS = [f"model.layers.{i}.mlp" for i in range(model.config.num_hidden_layers)]
 
     with torch.no_grad():
-        prompt = prompt.to(device)
+        # prompt = prompt.to(model.device)
         with TraceDict(model, HEADS+MLPS) as ret:
             output = model(prompt, output_hidden_states = True)
         hidden_states = output.hidden_states
