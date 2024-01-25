@@ -26,7 +26,7 @@ HF_NAMES = {
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
-    parser.add_argument('--dataset_name', type=str, default='trivia_qa', help='feature bank for training probes')
+    parser.add_argument('--dataset_name', type=str, default='openbookqa', help='feature bank for training probes')
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
@@ -102,9 +102,9 @@ def main():
             # 获取正确答案的索引
             correct_index = row['choices']['label'].index(row['answerKey'])
             # 提取正确答案
-            correct_answer = row['choices']['text'][correct_index]
+            correct_answer = row['choices']['text'][correct_index].replace(';', ',')
             # 提取错误答案
-            incorrect_answers = [ans for i, ans in enumerate(row['choices']['text']) if i != correct_index]
+            incorrect_answers = [ans.replace(';', ',') for i, ans in enumerate(row['choices']['text']) if i != correct_index]
             incorrect_answers = '; '.join(incorrect_answers)
 
             return pd.Series([correct_answer, incorrect_answers])
