@@ -36,6 +36,7 @@ def main():
         'llama2_chat_7B': 'daryl149/llama-2-7b-chat-hf',
         'llama_13B': 'luodian/llama-13b-hf',
         'llama_33B': 'alexl83/LLaMA-33B-HF',
+        'llama_65B': 'Enoch/llama-65b-hf',
     }
 
     MODEL = HF_NAMES[args.model_name]
@@ -83,7 +84,8 @@ def main():
     all_head_wise_activations = []
 
     print("Getting activations")
-    for prompt, token in tqdm(zip(prompts[len(prompts) // 2:], tokens[len(tokens) // 2:]), total=len(prompts)//2):
+    
+    for prompt, token in tqdm(zip(prompts[len(prompts) // 3:], tokens[len(tokens) // 3:]), total=len(prompts)//3):
         # layer_wise_activations (33, 42, 4096) num_hidden_layers + last, seq_len, hidden_size
         # head_wise_activations (32, 42, 4096) num_hidden_layers, seq_len, hidden_size
         layer_wise_activations, head_wise_activations, _ = get_llama_activations_bau(model, prompt, 'cuda')
@@ -109,17 +111,17 @@ def main():
         gc.collect()
 
     print("Saving labels")
-    np.save(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy', labels)
+    # np.save(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_labels.npy', labels)
     
     print("Saving tokens")
-    pickle.dump(tokens, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_tokens.pkl', 'wb'))
+    # pickle.dump(tokens, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_tokens.pkl', 'wb'))
 
     print("Saving layer wise activations")
     # pickle.dump(all_layer_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_layer_wise.pkl', 'wb'))
     # np.save(f'features/all_activations/{args.model_name}_{args.dataset_name}_layer_wise.npy', all_layer_wise_activations)
     
     print("Saving head wise activations")
-    pickle.dump(all_head_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise.pkl', 'wb'))
+    pickle.dump(all_head_wise_activations, open(f'/data/jxf/activations/{args.model_name}_{args.dataset_name}_{args.collect}{args.cut_type}_head_wise_0.pkl', 'wb'))
     # np.save(f'features/all_activations/{args.model_name}_{args.dataset_name}_head_wise.npy', all_head_wise_activations)
 
     print("All saved successfully")
