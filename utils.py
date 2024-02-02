@@ -1002,6 +1002,24 @@ def train_probes(seed, train_set_idxs, val_set_idxs, separated_head_wise_activat
 
     return probes, all_head_accs_np
 
+def get_centring_vectors(seed, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads):
+    
+    centring_vectors = []
+    all_idxs = np.concatenate([train_set_idxs, val_set_idxs])
+    
+    all_X = np.concatenate([separated_head_wise_activations[i] for i in all_idxs], axis = 0)
+    y = np.concatenate([separated_labels[i] for i in all_idxs], axis = 0)
+
+
+    for layer in tqdm(range(num_layers), desc='get centring vectors'): 
+        for head in range(num_heads): 
+            pos_vector = all_X[y==1][:,layer,head,:].mean(axis=0)
+            mean_vector = all_X[:,layer,head,:].mean(axis=0)
+            centring_vector = pos_vector - mean_vector
+            centring_vectors.append(centring_vector)
+
+    return centring_vectors
+
 def get_top_heads(train_idxs, val_idxs, separated_activations, separated_labels, num_layers, num_heads, seed, num_to_intervene, use_random_dir=False):
 
     probes, all_head_accs_np = train_probes(seed, train_idxs, val_idxs, separated_activations, separated_labels, num_layers=num_layers, num_heads=num_heads)
