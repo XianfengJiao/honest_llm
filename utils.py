@@ -39,6 +39,7 @@ ENGINE_MAP = {
     'llama2_chat_7B': 'daryl149/llama-2-7b-chat-hf',
     'llama_13B': 'luodian/llama-13b-hf',
     'llama_33B': 'alexl83/LLaMA-33B-HF',
+    'llama_65B': 'Enoch/llama-65b-hf',
 }
 
 
@@ -275,7 +276,7 @@ def get_llama_activations_bau(model, prompt, device):
     MLPS = [f"model.layers.{i}.mlp" for i in range(model.config.num_hidden_layers)]
 
     with torch.no_grad():
-        prompt = prompt.to(device)
+        # prompt = prompt.to(model.device)
         with TraceDict(model, HEADS+MLPS) as ret:
             output = model(prompt, output_hidden_states = True)
         hidden_states = output.hidden_states
@@ -1000,6 +1001,24 @@ def train_probes(seed, train_set_idxs, val_set_idxs, separated_head_wise_activat
     all_head_accs_np = np.array(all_head_accs)
 
     return probes, all_head_accs_np
+
+def get_centring_vectors(seed, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads):
+    
+    centring_vectors = []
+    all_idxs = np.concatenate([train_set_idxs, val_set_idxs])
+    
+    all_X = np.concatenate([separated_head_wise_activations[i] for i in all_idxs], axis = 0)
+    y = np.concatenate([separated_labels[i] for i in all_idxs], axis = 0)
+
+
+    for layer in tqdm(range(num_layers), desc='get centring vectors'): 
+        for head in range(num_heads): 
+            pos_vector = all_X[y==1][:,layer,head,:].mean(axis=0)
+            mean_vector = all_X[:,layer,head,:].mean(axis=0)
+            centring_vector = pos_vector - mean_vector
+            centring_vectors.append(centring_vector)
+
+    return centring_vectors
 
 def get_top_heads(train_idxs, val_idxs, separated_activations, separated_labels, num_layers, num_heads, seed, num_to_intervene, use_random_dir=False):
 

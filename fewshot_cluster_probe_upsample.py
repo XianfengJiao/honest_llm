@@ -21,6 +21,7 @@ HF_NAMES = {
     'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
     'llama_13B': 'luodian/llama-13b-hf',
     'llama_33B': 'alexl83/LLaMA-33B-HF',
+    'llama_65B': 'Enoch/llama-65b-hf',
 }
 
 
@@ -90,20 +91,21 @@ def main():
     num_layers = model.config.num_hidden_layers
     num_heads = model.config.num_attention_heads
 
-    # load activations
-    if args.model_name == 'llama_33B':
-        head_wise_activations = []
-        for i in range(2):
-            head_wise_activations_tmp = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_head_wise_{i}.pkl', 'rb'))
-            head_wise_activations += head_wise_activations_tmp
-    else:
-        head_wise_activations = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_head_wise.pkl', 'rb'))
-    labels = np.load(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_labels.npy')
-    # head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
+    if not args.pure:
+        # load activations
+        if args.model_name == 'llama_33B':
+            head_wise_activations = []
+            for i in range(2):
+                head_wise_activations_tmp = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_head_wise_{i}.pkl', 'rb'))
+                head_wise_activations += head_wise_activations_tmp
+        else:
+            head_wise_activations = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_head_wise.pkl', 'rb'))
+        labels = np.load(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_labels.npy')
+        # head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
 
-    # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
-    separated_head_wise_activations, separated_labels, _ = get_separated_upsample_activations(labels, head_wise_activations, args.cut_rate, num_heads)
-    
+        # separated_head_wise_activations: shape(question_nums, answer_nums, layer_nums, head_nums, 128)
+        separated_head_wise_activations, separated_labels, _ = get_separated_upsample_activations(labels, head_wise_activations, args.cut_rate, num_heads)
+        
 
     # run k-fold cross validation
     results = []
@@ -130,17 +132,18 @@ def main():
         df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
         df.iloc[test_set_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
-        # get direction of cluster center
-        cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
+        if not args.pure:
+            # get direction of cluster center
+            cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
 
-        top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
-        # print("Heads intervened: ", sorted(top_heads))
+            top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
+            # print("Heads intervened: ", sorted(top_heads))
 
-        tuning_activations = np.array([token_ac for ans_ac in separated_head_wise_activations for token_ac in ans_ac])
-        interventions = get_cluster_probe_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
+            tuning_activations = np.array([token_ac for ans_ac in separated_head_wise_activations for token_ac in ans_ac])
+            interventions = get_cluster_probe_interventions_dict(top_heads, probes, tuning_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
 
         # sample_directions
-        sample_directions = head_wise_activation_directions[test_set_idxs]
+        sample_directions = None
 
         if args.probe_type == 'prob':
             def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
@@ -186,8 +189,8 @@ def main():
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
             device="cuda", 
-            interventions=interventions, 
-            intervention_fn=lt_modulated_cluster_probe_add, 
+            interventions=interventions if not args.pure else {},
+            intervention_fn=lt_modulated_cluster_probe_add if not args.pure else None, 
             judge_name=args.judge_name, 
             info_name=args.info_name,
             use_cluster=False,

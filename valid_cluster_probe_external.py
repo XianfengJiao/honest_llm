@@ -26,7 +26,7 @@ HF_NAMES = {
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
-    parser.add_argument('--dataset_name', type=str, default='nq_open', help='feature bank for training probes')
+    parser.add_argument('--dataset_name', type=str, default='openbookqa', help='feature bank for training probes')
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
@@ -91,8 +91,28 @@ def main():
         df_external = pd.DataFrame(dataset)
         df_external['Correct Answers'] = df_external['answer'].apply(lambda x: ';'.join(x['aliases']))
         df_external['Best Answer'] = df_external['answer'].apply(lambda x: x['value'])
+
         df_external['Incorrect Answers'] = df_external['false_answer']
         df_external['Question'] = df_external['question']
+    elif args.dataset_name == 'openbookqa':
+        url = "https://huggingface.co/api/datasets/openbookqa/parquet/additional/train/0.parquet"
+        dataset = load_dataset('parquet', data_files=url)
+        # 定义一个函数来提取正确和错误的答案
+        def extract_answers(row):
+            # 获取正确答案的索引
+            correct_index = row['choices']['label'].index(row['answerKey'])
+            # 提取正确答案
+            correct_answer = row['choices']['text'][correct_index].replace(';', ',')
+            # 提取错误答案
+            incorrect_answers = [ans.replace(';', ',') for i, ans in enumerate(row['choices']['text']) if i != correct_index]
+            incorrect_answers = '; '.join(incorrect_answers)
+
+            return pd.Series([correct_answer, incorrect_answers])
+
+        df_external = pd.DataFrame(dataset['train'])
+        df_external['Question'] = df_external['question_stem']
+        df_external[['Correct Answers', 'Incorrect Answers']] = df_external.apply(extract_answers, axis=1)
+        df_external['Best Answer'] = df_external['Correct Answers']
 
     dictionary = {k: i for i, k in enumerate(golden_q_order)}
     for q in df['Question']:
@@ -216,6 +236,7 @@ def main():
 
     # print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
     print(f'MC1: {final[0]:.4f}, MC2: {final[1]:.4f}')
+    # print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}')
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
 if __name__ == "__main__":
