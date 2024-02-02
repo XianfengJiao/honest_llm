@@ -92,7 +92,8 @@ def run_end2end_GPT3(model_key, tag, engine, frame, info=False):
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
-    parser.add_argument('--valid_dir', type=str, default='/data/jxf/honest_llm/cluster_experiments/fewshot_cluster_probe_upsample_num_heads24_alpha12.0_n_clusters2_baseW0.3_cut0.9_prob_none')
+    parser.add_argument('--valid_dir', type=str, default='/data/jxf/honest_llm/cluster_experiments/cluster_probe_num_heads24_alpha12.0_n_clusters3_baseW0.0_prob')
+    parser.add_argument('--output_dir', type=str, default='/data/jxf/code/honest_llm/validation/results_dump/answer_dump')
     parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
     parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
     args = parser.parse_args()
@@ -104,6 +105,7 @@ def main():
         valid_data = pd.read_csv(vf)
         valid_data = run_end2end_GPT3(args.model_name, 'GPT-judge', args.judge_name, valid_data, info=False)
         valid_data = run_end2end_GPT3(args.model_name, 'GPT-info', args.info_name, valid_data, info=True)
+        valid_data.to_csv(os.path.join(args.output_dir, os.path.basename(vf)), index=False)
         fold_results = format_frame(valid_data)
         fold_results = fold_results.mean(axis=0)
         fold_results = fold_results.reset_index().rename(columns={'level_0': 'Model',
