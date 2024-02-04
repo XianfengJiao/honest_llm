@@ -35,10 +35,12 @@ def main():
     parser.add_argument('--probe_type', type=str, default='prob')
     parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
-    parser.add_argument('--device', type=int, default=0, help='device')
+    parser.add_argument('--device', type=int, default=1, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
     parser.add_argument('--n_clusters', type=int, default=3)
     parser.add_argument('--single_cluster', type=int, default=0)
+    parser.add_argument('--single2multi', action='store_true', default=False)
+    parser.add_argument('--get_proba', action='store_true', default=True)
     parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
     parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
     args = parser.parse_args()
@@ -46,7 +48,11 @@ def main():
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
     if args.pure:
-        experiment_name = f'valid_2_fold_{args.model_name}_pure'
+        experiment_name = f'{args.model_name}_pure'
+    elif args.get_proba:
+        experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_get_proba'
+    elif args.single2multi:
+        experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_single2multi{args.single_cluster}'
     else:
         experiment_name = f'{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_single{args.single_cluster}'
     experiments_path = f'/data/wtl/honest_llm/vis_cat_res_experiments/{experiment_name}'
@@ -123,15 +129,46 @@ def main():
 
         top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
         # print("Heads intervened: ", sorted(top_heads))
-    
-        interventions = get_single_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None, single_cluster=args.single_cluster)
+        pkl.dump(cluster_idxs, open(f'{experiments_path}/cluster_idxs_fold_{i}.pkl', 'wb'))
+        pkl.dump(top_heads, open(f'{experiments_path}/top_heads_fold_{i}.pkl', 'wb'))
+        pkl.dump(probes, open(f'{experiments_path}/probes_fold_{i}.pkl', 'wb'))
+
+        
+        if args.get_proba:
+            interventions = get_cluster_probe_interventions_dict_with_cluster_info(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
+        elif args.single2multi:
+            interventions = get_single2multi_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=head_wise_activation_directions, single_cluster=args.single_cluster)
+        else:
+            interventions = get_single_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None, single_cluster=args.single_cluster)
 
         print("intervented head nums: ", sum([len(_)for _ in interventions.values()]))
+        pkl.dump(interventions, open(f'{experiments_path}/interventions_fold_{i}.pkl', 'wb'))
         # sample_directions
         sample_directions = head_wise_activation_directions[test_idxs]
 
+        if args.get_proba:
+            q_wise_proba = {}
+            def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt', question=None):
+                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
+                for head, direction, proj_val_std, probe, cluster in interventions[layer_name]:
+                    direction_to_add = torch.tensor(direction).to(head_output.device.index)
+                    if args.probe_base_weight == -1:
+                        weight = 1
+                    else:
+                        proba = probe.predict_proba(head_output[:, -1, head, :].detach().cpu().numpy())[0][1]
+                        weight = 1 + args.probe_base_weight - proba
 
-        if args.probe_type == 'prob':
+                    if start_edit_location == 'lt': 
+                        if q_wise_proba.get(question, None) is None:
+                            q_wise_proba[question] = [[] for _ in range(args.n_clusters)]
+                        q_wise_proba[question][cluster].append(proba)
+                        head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
+                    else: 
+                        head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
+                    
+                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
+                return head_output
+        elif args.probe_type == 'prob':
             def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
                 head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
                 for head, direction, proj_val_std, probe in interventions[layer_name]:
@@ -170,7 +207,7 @@ def main():
                     
         curr_fold_results = alt_tqa_evaluate(
             {args.model_name: model}, 
-            ['mc','bleu','bleurt', 'judge', 'info'], 
+            ['bleu','bleurt', 'judge', 'info'], 
             f'{experiments_path}/fold_{i}_test_seed_{args.seed}.csv', 
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
@@ -180,11 +217,13 @@ def main():
             judge_name=args.judge_name, 
             info_name=args.info_name,
             use_cluster=False,
-            sample_directions = sample_directions
+            sample_directions = sample_directions,
+            get_proba = args.get_proba
         )
 
         print(f"FOLD {i}")
         print(curr_fold_results)
+        pkl.dump(q_wise_proba, open(f'{experiments_path}/q_wise_proba_fold_{i}.pkl', 'wb'))
 
         curr_fold_results = curr_fold_results.to_numpy()[0].astype(float)
         results.append(curr_fold_results)
@@ -193,7 +232,7 @@ def main():
     final = results.mean(axis=0)
 
     # print(f'BLEURT acc: {final[0]:.4f}, MC1: {final[1]:.4f}, MC2: {final[2]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
-    print(f'True*Info Score: {final[1]*final[2]}, True Score: {final[2]}, Info Score: {final[1]}, BLEURT acc: {final[0]:.4f}, MC1: {final[3]:.4f}, MC2: {final[4]:.4f}, bleu acc: {final[5]:.4f}, rouge1 acc: {final[6]:.4f}, CE Loss: {final[7]}, KL wrt Original: {final[8]}')
+    print(f'True*Info Score: {final[1]*final[2]}, True Score: {final[2]}, Info Score: {final[1]}, BLEURT acc: {final[0]:.4f}, bleu acc: {final[3]:.4f}, rouge1 acc: {final[4]:.4f}, CE Loss: {final[5]}, KL wrt Original: {final[6]}')
     # print(f'True*Info Score: {final[1]*final[0]}, True Score: {final[1]}, Info Score: {final[0]}, MC1 Score: {final[2]}, MC2 Score: {final[3]}, CE Loss: {final[4]}, KL wrt Original: {final[5]}')
 
 if __name__ == "__main__":
