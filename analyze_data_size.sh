@@ -1,5 +1,4 @@
 #!/bin/bash
-export CUDA_VISIBLE_DEVICES=6,7
 # 定义 probe_base_weight 和 n_clusters 的数组
 alpha=(14)
 probe_base_weights=(0)
@@ -7,7 +6,7 @@ n_clusters=(3)
 num_heads=(32)
 train_rate=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9)
 seed=42
-init_seed=0
+init_seed=100
 
 # 外循环遍历 probe_base_weight
 
