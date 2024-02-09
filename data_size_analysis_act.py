@@ -38,6 +38,7 @@ def main():
     parser.add_argument('--train_ratio', type=float, help='ratio of training set size to development set size', default=0.9)
     parser.add_argument('--device', type=int, default=0, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
+    parser.add_argument('--init_seed', type=int, default=42, help='seed for pytorch')
     parser.add_argument('--n_clusters', type=int, default=3)
     parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
     parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
@@ -54,9 +55,9 @@ def main():
     print(f'experiments_path: {experiments_path}')
 
     # set seeds
-    torch.manual_seed(args.seed)
+    torch.manual_seed(args.init_seed)
     np.random.seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
+    torch.cuda.manual_seed_all(args.init_seed)
 
     # load dataframe and activations direcitons
     df = pd.read_csv('./TruthfulQA/data/v0/TruthfulQA.csv')
