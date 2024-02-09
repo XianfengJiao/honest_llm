@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # 定义 probe_base_weight 和 n_clusters 的数组
-alpha=(24 32 48)
-layers=(25 30 15 10 5)
+alpha=(16 24 32)
+layers=(18 22 24 28)
 
 # 外循环遍历 probe_base_weight
 
