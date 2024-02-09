@@ -3,10 +3,10 @@
 # 定义 probe_base_weight 和 n_clusters 的数组
 alpha=(12)
 probe_base_weights=(0)
-n_clusters=(3)
+n_clusters=(4)
 num_heads=(24)
 train_rate=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9)
-seed=0
+seed=42
 
 # 外循环遍历 probe_base_weight
 
