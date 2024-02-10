@@ -9,7 +9,7 @@ seed=5
 model=vicuna_7B
 
 echo "Running: analyze_data_size_${model}_seed${seed}_pure"
-nohup python -u data_size_analysis_act.py --seed=${seed} --pure > "./logs/0211_${model}_data_size_analysis_pure_seed${seed}" 2>&1 &
+nohup python -u data_size_analysis_act.py --seed=${seed} --pure > "./logs/0211_${model}_data_size_analysis_pure_seed${seed}.log" 2>&1 &
 wait
 
 for a in "${alpha[@]}"; do
