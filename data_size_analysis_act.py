@@ -48,7 +48,7 @@ def main():
     if args.pure:
         experiment_name = f'data_analyze_{args.model_name}_seed{args.seed}_pure'
     else:
-        experiment_name = f'data_analyze_{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}_seed{args.seed}_init{args.init_seed}_train{args.train_ratio}'
+        experiment_name = f'data_analyze_{args.model_name}_cluster_probe_num_heads{args.num_heads}_alpha{args.alpha}_n_clusters{args.n_clusters}_baseW{args.probe_base_weight}_{args.probe_type}_seed{args.seed}_train{args.train_ratio}'
     experiments_path = f'/data/jxf/honest_llm/cluster_experiments/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
