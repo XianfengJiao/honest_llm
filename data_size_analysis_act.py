@@ -21,6 +21,10 @@ HF_NAMES = {
     'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf',
     'llama_13B': 'luodian/llama-13b-hf',
     'llama_33B': 'alexl83/LLaMA-33B-HF',
+    'vicuna_7B': 'AlekseyKorshuk/vicuna-7b',
+    'alpaca_7B': 'circulus/alpaca-7b',
+    'llama2_7B': 'meta-llama/Llama-2-7b-hf', 
+    'llama2_chat_7B': 'meta-llama/Llama-2-7b-chat-hf', 
 }
 
 
