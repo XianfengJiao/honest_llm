@@ -4,12 +4,12 @@ probe_base_weights=(0)
 
 n_clusters=(3)
 num_heads=(32)
-train_rate=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9)
-seed=1
+train_rate=(0.1)
+seed=2
 
-echo "Running: analyze_data_size_llama_7B_seed${seed}_pure"
-nohup python -u data_size_analysis_act.py --seed=${seed} --pure > "./logs/0210_data_size_analysis_pure_seed${seed}" 2>&1 &
-wait
+# echo "Running: analyze_data_size_llama_7B_seed${seed}_pure"
+# nohup python -u data_size_analysis_act.py --seed=${seed} --pure > "./logs/0210_data_size_analysis_pure_seed${seed}" 2>&1 &
+# wait
 
 for a in "${alpha[@]}"; do
     for num_head in "${num_heads[@]}"; do
