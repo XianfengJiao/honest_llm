@@ -29,10 +29,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
-    parser.add_argument("--num_fold", type=int, default=2, help="number of folds")
+    parser.add_argument("--num_fold", type=int, default=1, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
-    parser.add_argument('--device', type=int, default=1, help='device')
+    parser.add_argument('--device', type=int, default=0, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
+    parser.add_argument('--ref_dataset', type=str, default='')
     parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
     parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
     args = parser.parse_args()
@@ -60,6 +61,10 @@ def main():
     df = df.sort_values(by='Question', key=lambda x: x.map({k: i for i, k in enumerate(golden_q_order)}))
 
     dictionary = {k: i for i, k in enumerate(golden_q_order)}
+
+    ref_dataset = load_dataset("joyfine/TruthfulQA_CoT_GPT4")
+    sft_train_q = ref_dataset['train']['Question']
+
     for q in df['Question']:
         assert q in dictionary
     
@@ -80,12 +85,11 @@ def main():
     # run k-fold cross validation
     results = []
     for i in range(args.num_fold):
-
-        train_idxs = np.concatenate([fold_idxs[j] for j in range(args.num_fold) if j != i])
-        test_idxs = fold_idxs[i]
-
         print(f"Running fold {i}")
+        
+        test_idxs = np.array([idx for idx in fold_idxs[i] if df['Question'].iloc[idx] not in sft_train_q])
 
+        train_idxs = np.array([x for x in fold_idxs[i] if x not in test_idxs])
         # pick a val set using numpy
         train_set_idxs = np.random.choice(train_idxs, size=int(len(train_idxs)*(1-args.val_ratio)), replace=False)
         val_set_idxs = np.array([x for x in train_idxs if x not in train_set_idxs])

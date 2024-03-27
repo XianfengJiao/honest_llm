@@ -41,6 +41,7 @@ ENGINE_MAP = {
     'llama_13B': 'luodian/llama-13b-hf',
     'llama_33B': 'alexl83/LLaMA-33B-HF',
     'llama_65B': 'Enoch/llama-65b-hf',
+    'vicuna_7B_sft': 'joyfine/vicuna-7b-fine-tuning_truthfulQA_512_20',
 }
 
 
@@ -852,7 +853,7 @@ def alt_tqa_evaluate(models, metric_names, input_path, output_path, summary_path
                 print(err)
 
         # llama
-        if mdl in ['llama_7B', 'alpaca_7B', 'vicuna_7B', 'llama2_chat_7B', 'llama_13B', 'llama_33B', 'llama_65B']: 
+        if mdl in ['llama_7B', 'alpaca_7B', 'vicuna_7B', 'llama2_chat_7B', 'llama_13B', 'llama_33B', 'llama_65B', 'vicuna_7B_sft']: 
 
             assert models[mdl] is not None, 'must provide llama model'
             llama_model = models[mdl]
