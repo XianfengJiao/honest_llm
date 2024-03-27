@@ -22,6 +22,7 @@ HF_NAMES = {
     'llama_13B': 'luodian/llama-13b-hf',
     'llama_33B': 'alexl83/LLaMA-33B-HF',
     'vicuna_7B_sft': 'joyfine/vicuna-7b-fine-tuning_truthfulQA_512_20',
+    'vicuna_7B': 'AlekseyKorshuk/vicuna-7b', 
 }
 
 
@@ -40,7 +41,7 @@ def main():
 
     print('Running:\n{}\n'.format(' '.join(sys.argv)))
     print(args)
-    experiment_name = f'valid_2_fold_{args.model_name}_pure'
+    experiment_name = f'valid_80_20_{args.model_name}_pure'
     experiments_path = f'/data/jxf/honest_llm/validation/{experiment_name}'
     os.makedirs(experiments_path, exist_ok=True)
     print(f'experiments_path: {experiments_path}')
