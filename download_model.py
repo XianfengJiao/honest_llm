@@ -25,11 +25,11 @@ from utils import *
 # model_name = "alexl83/LLaMA-33B-HF"
 # model_name = "Enoch/llama-65b-hf"
 # model_name = "joyfine/vicuna-7b-fine-tuning_truthfulQA_512_20"
-model_name = "joyfine/vicuna-7b-fine-tuning_truthfulQA_512_20"
+model_name = "joyfine/vicuna-7b-fine-tuning_truthfulQA_64_20"
 
-# tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
-# model = llama.LLaMAForCausalLM.from_pretrained(model_name, force_download=True, resume_download=False)
+tokenizer = llama.LLaMATokenizer.from_pretrained(model_name)
+model = llama.LLaMAForCausalLM.from_pretrained(model_name, force_download=True, resume_download=False)
 
 
-tokenizer = AutoTokenizer.from_pretrained("joyfine/llama2-7b-fine-tuning_TruthfulQA_20")
-model = AutoModelForCausalLM.from_pretrained("joyfine/llama2-7b-fine-tuning_TruthfulQA_20")
+# tokenizer = AutoTokenizer.from_pretrained("joyfine/llama2-7b-fine-tuning_TruthfulQA_20")
+# model = AutoModelForCausalLM.from_pretrained("joyfine/llama2-7b-fine-tuning_TruthfulQA_20")
