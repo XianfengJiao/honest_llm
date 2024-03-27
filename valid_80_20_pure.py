@@ -31,16 +31,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default='llama_7B', choices=HF_NAMES.keys(), help='model name')
     parser.add_argument('--dataset_name', type=str, default='tqa_mc2', help='feature bank for training probes')
-    parser.add_argument('--num_heads', type=int, default=16, help='K, number of top heads to intervene on')
-    parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
-    parser.add_argument('--probe_base_weight', type=float, default=0)
-    parser.add_argument('--pure', action='store_true', default=False)
-    parser.add_argument('--probe_type', type=str, default='prob')
     parser.add_argument("--num_fold", type=int, default=1, help="number of folds")
     parser.add_argument('--val_ratio', type=float, help='ratio of validation set size to development set size', default=0.2)
     parser.add_argument('--device', type=int, default=0, help='device')
     parser.add_argument('--seed', type=int, default=42, help='seed')
-    parser.add_argument('--n_clusters', type=int, default=3)
+    parser.add_argument('--ref_dataset', type=str, default='')
     parser.add_argument('--judge_name', type=str, default='ft:davinci-002:university-of-edinburgh::8ejp8D64')
     parser.add_argument('--info_name', type=str, default='ft:davinci-002:university-of-edinburgh:info:8ejuTaQe')
     args = parser.parse_args()
@@ -59,7 +54,6 @@ def main():
 
     # load dataframe and activations direcitons
     df = pd.read_csv('./TruthfulQA/data/v0/TruthfulQA.csv')
-    head_wise_activation_directions = np.load(f'/data/jxf/honest_llm/directions/{args.model_name}_head_wise_activation_directions.npy')
 
     # order csv by huggingface order, the order used to save activations
     # dataset = load_dataset("truthful_qa", "multiple_choice")['validation']
@@ -90,18 +84,6 @@ def main():
         model = llama.LLaMAForCausalLM.from_pretrained(model_name, low_cpu_mem_usage = True, torch_dtype=torch.float16, device_map="auto")
         device = 'cuda'
 
-    # define number of layers and heads
-    num_layers = model.config.num_hidden_layers
-    num_heads = model.config.num_attention_heads
-
-    # load activations 
-    head_wise_activations = pkl.load(open(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_100_head_wise.pkl', 'rb'))
-    labels = np.load(f'/data/jxf/activations/{args.model_name}_tqa_mc2_all_100_labels.npy')
-    head_wise_activations = rearrange(head_wise_activations, 'b l (h d) -> b l h d', h = num_heads)
-
-
-    separated_head_wise_activations, separated_labels, idxs_to_split_at = get_separated_activations(labels, head_wise_activations)
-
     # run k-fold cross validation
     results = []
     for i in range(args.num_fold):
@@ -119,54 +101,7 @@ def main():
         df.iloc[val_set_idxs].to_csv(f"{experiments_path}/fold_{i}_val_seed_{args.seed}.csv", index=False)
         df.iloc[test_idxs].to_csv(f"{experiments_path}/fold_{i}_test_seed_{args.seed}.csv", index=False)
 
-        cluster_idxs = get_cluster_idxs(num_layers, num_heads, train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, n_clusters=args.n_clusters, directions=head_wise_activation_directions)
-
-        top_heads, probes = get_top_heads_cluster(train_set_idxs, val_set_idxs, separated_head_wise_activations, separated_labels, num_layers, num_heads, args.seed, args.num_heads, cluster_idxs, use_random_dir=False)
-        # print("Heads intervened: ", sorted(top_heads))
-    
-        interventions = get_cluster_probe_interventions_dict(top_heads, probes, head_wise_activations, num_heads, use_center_of_mass=True, use_random_dir=None, com_directions=None)
-
-        # sample_directions
-        sample_directions = head_wise_activation_directions[test_idxs]
-
-        if args.probe_type == 'prob':
-            def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
-                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
-                for head, direction, proj_val_std, probe in interventions[layer_name]:
-                    direction_to_add = torch.tensor(direction).to(head_output.device.index)
-                    if args.probe_base_weight == -1:
-                        weight = 1
-                    else:
-                        weight = 1 + args.probe_base_weight - probe.predict_proba(head_output[:, -1, head, :].detach().cpu().numpy())[0][1]
-
-                    if start_edit_location == 'lt': 
-                        head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    else: 
-                        head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    
-                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
-                return head_output
-        else:
-            def lt_modulated_cluster_probe_add(head_output, layer_name, start_edit_location='lt'):
-                head_output = rearrange(head_output, 'b s (h d) -> b s h d', h=num_heads)
-                for head, direction, proj_val_std, probe in interventions[layer_name]:
-                    direction_to_add = torch.tensor(direction).to(head_output.device.index)
-                    if args.probe_base_weight == -1:
-                        weight = 1
-                    else:
-                        weight = 1 + args.probe_base_weight - probe.predict(head_output[:, -1, head, :].detach().cpu().numpy())[0]
-
-                    if start_edit_location == 'lt': 
-                        head_output[:, -1, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    else: 
-                        head_output[:, start_edit_location:, head, :] += args.alpha * proj_val_std * direction_to_add * weight
-                    
-                head_output = rearrange(head_output, 'b s h d -> b s (h d)')
-                return head_output
-
-
-
-        filename = f'{args.model_name}_seed_{args.seed}_top_{args.num_heads}_heads_alpha_{int(args.alpha)}_fold_{i}'
+        filename = f'{args.model_name}_seed_{args.seed}_fold_{i}'
                     
         curr_fold_results = alt_tqa_evaluate(
             {args.model_name: model}, 
@@ -175,8 +110,8 @@ def main():
             f'{experiments_path}/answer_{filename}.csv', 
             f'{experiments_path}/summary_{filename}.csv', 
             device=device, 
-            interventions=interventions if not args.pure else {},
-            intervention_fn=lt_modulated_cluster_probe_add if not args.pure else None, 
+            interventions={},
+            intervention_fn=None, 
             judge_name=args.judge_name, 
             info_name=args.info_name,
             use_cluster=False,
