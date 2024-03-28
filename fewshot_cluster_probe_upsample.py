@@ -32,6 +32,7 @@ def main():
     parser.add_argument('--num_heads', type=int, default=48, help='K, number of top heads to intervene on')
     parser.add_argument('--alpha', type=float, default=15, help='alpha, intervention strength')
     parser.add_argument('--cut_rate', type=float, default=0.9)
+    parser.add_argument('--pure', action='store_true', default=False)
     parser.add_argument('--probe_base_weight', type=float, default=0.5)
     parser.add_argument('--probe_type', type=str, default='prob')
     parser.add_argument('--method', type=str, default='icl')
